@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import * as echarts from 'echarts'
-import { getSettings } from '../../lib/sqlite'
+import worldData from 'echarts-countries-js/world-x.json'
 
 interface LogisticsMapProps {
   height?: number | string
@@ -20,30 +20,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
       const chart = echarts.init(ref.current, undefined, { renderer: 'canvas' })
       chartRef.current = chart
 
-      try {
-        const providers: Record<string, string> = {
-          jsdelivr: 'https://fastly.jsdelivr.net/npm/echarts-countries-js@1.2.0/world.json',
-          unpkg: 'https://unpkg.com/echarts-countries-js@1.2.0/world.json',
-          cdnjs: 'https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/map/json/world.json'
-        }
-        let urls = [providers.jsdelivr, providers.unpkg, providers.cdnjs, '/world.json']
-        try {
-          const rows = await getSettings()
-          const p = rows.find((r: any) => r.key === 'map_provider')?.value || 'jsdelivr'
-          const primary = providers[p] || providers.jsdelivr
-          urls = [primary, ...Object.values(providers).filter(u => u !== primary), '/world.json']
-        } catch (_) {}
-        for (const url of urls) {
-          try {
-            const resp = await fetch(url)
-            if (resp.ok) {
-              const world = await resp.json()
-              echarts.registerMap('world', world)
-              break
-            }
-          } catch (_) {}
-        }
-      } catch (e) {}
+      try { echarts.registerMap('world', worldData as any) } catch (e) {}
 
       const china = { name: 'China', coord: [116.4074, 39.9042] }
       const shanghai = { name: 'Shanghai Port', coord: [121.4917, 31.2333] }

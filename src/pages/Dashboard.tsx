@@ -3,9 +3,8 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { HudPanel, DataCard, MetricDisplay, StatusBadge } from '../components/ui/HudPanel';
 import LogisticsMap from '../components/charts/LogisticsMap';
 import { useNavigate } from 'react-router-dom';
-import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getSettings, getTradeStreamBatch, pushTradeEvents, getTodayGMV, getPortsCongestion, consistencyCheck } from '../lib/sqlite';
+import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getTradeStreamBatch, getTodayGMV, getPortsCongestion, consistencyCheck } from '../lib/sqlite';
 import { 
-  TrendingUp,
   Package,
   Activity,
   Truck,
@@ -15,7 +14,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 
-const COLORS = ['#00F0FF', '#2E5CFF', '#10B981', '#F59E0B', '#EF4444'];
+ 
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -26,7 +25,7 @@ export const Dashboard: React.FC = () => {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [flows, setFlows] = useState<Array<{ from:[number,number], to:[number,number], tooltip?:string }>>([]);
   const [gmvToday, setGmvToday] = useState(0);
-  const [tps, setTps] = useState(0);
+  const [tps] = useState(0);
   const [ports, setPorts] = useState<{ port:string; index:number }[]>([]);
   const [syncDelay, setSyncDelay] = useState(0);
 
@@ -49,7 +48,7 @@ export const Dashboard: React.FC = () => {
       }[city] || [116.4074,39.9042]);
       setFlows(batch.map((b:any)=>({ from: geo(b.fromCity), to: geo(b.toCity), tooltip: `${b.fromCity} → ${b.toCity} $${b.amount}` })));
       setGmvToday(await getTodayGMV());
-      setPorts((await getPortsCongestion()).map((p:any)=>({ port:p.port, index:p.index })));
+      setPorts((await getPortsCongestion()).map((p:any)=>({ port:p.port, index:p.congestionIndex })));
       setSyncDelay(await consistencyCheck());
     };
     load();

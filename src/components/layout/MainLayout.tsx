@@ -52,6 +52,12 @@ const menuItems = [
     description: '备案企业查询与接入'
   },
   { 
+    icon: CheckCircle, 
+    label: '报关管理', 
+    path: '/customs',
+    description: '申报单导入与合规核算'
+  },
+  { 
     icon: Settings, 
     label: '系统设置', 
     path: '/settings',

@@ -11,6 +11,7 @@ const Capabilities = React.lazy(() => import('./pages/Capabilities').then(module
 const Collaboration = React.lazy(() => import('./pages/CollaborationWorkbench').then(module => ({ default: module.CollaborationWorkbench })));
 const Acceptance = React.lazy(() => import('./pages/AcceptanceTraceability').then(module => ({ default: module.AcceptanceTraceability })));
 const Enterprises = React.lazy(() => import('./pages/Enterprises').then(module => ({ default: module.Enterprises })));
+const Customs = React.lazy(() => import('./pages/Customs').then(module => ({ default: module.Customs })));
 
 function App() {
   return (
@@ -36,6 +37,11 @@ function App() {
           <Route path="/enterprises" element={
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text白">加载中...</div>}>
               <Enterprises />
+            </React.Suspense>
+          } />
+          <Route path="/customs" element={
+            <React.Suspense fallback={<div className="flex items中心 justify-center h-64 text白">加载中...</div>}>
+              <Customs />
             </React.Suspense>
           } />
           <Route path="/settings" element={<Settings />} />

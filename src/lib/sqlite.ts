@@ -200,6 +200,45 @@ function seed(db: Database) {
       idx REAL,
       updated_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS customs_headers (
+      id TEXT PRIMARY KEY,
+      declaration_no TEXT UNIQUE,
+      enterprise TEXT,
+      consignor TEXT,
+      consignee TEXT,
+      port_code TEXT,
+      trade_mode TEXT,
+      currency TEXT,
+      total_value REAL,
+      gross_weight REAL,
+      net_weight REAL,
+      packages INTEGER,
+      country_origin TEXT,
+      country_dest TEXT,
+      status TEXT,
+      declare_date TEXT,
+      order_id TEXT,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS customs_items (
+      id TEXT PRIMARY KEY,
+      header_id TEXT,
+      line_no INTEGER,
+      hs_code TEXT,
+      name TEXT,
+      spec TEXT,
+      unit TEXT,
+      qty REAL,
+      unit_price REAL,
+      amount REAL,
+      origin_country TEXT,
+      tax_rate REAL,
+      tariff REAL,
+      excise REAL,
+      vat REAL
+    );
   `)
 
   const now = Date.now()
@@ -550,6 +589,153 @@ export async function exec(sql: string, params?: Record<string, any>) {
   persist(db)
 }
 
+export async function ensureCustomsTables() {
+  await exec(`CREATE TABLE IF NOT EXISTS customs_headers (
+    id TEXT PRIMARY KEY,
+    declaration_no TEXT UNIQUE,
+    enterprise TEXT,
+    consignor TEXT,
+    consignee TEXT,
+    port_code TEXT,
+    trade_mode TEXT,
+    currency TEXT,
+    total_value REAL,
+    gross_weight REAL,
+    net_weight REAL,
+    packages INTEGER,
+    country_origin TEXT,
+    country_dest TEXT,
+    status TEXT,
+    declare_date TEXT,
+    order_id TEXT,
+    updated_at TEXT
+  )`)
+  await exec(`CREATE TABLE IF NOT EXISTS customs_items (
+    id TEXT PRIMARY KEY,
+    header_id TEXT,
+    line_no INTEGER,
+    hs_code TEXT,
+    name TEXT,
+    spec TEXT,
+    unit TEXT,
+    qty REAL,
+    unit_price REAL,
+    amount REAL,
+    origin_country TEXT,
+    tax_rate REAL,
+    tariff REAL,
+    excise REAL,
+    vat REAL
+  )`)
+}
+
+export async function upsertCustomsHeader(h: {
+  id: string,
+  declarationNo: string,
+  enterprise?: string,
+  consignor?: string,
+  consignee?: string,
+  portCode?: string,
+  tradeMode?: string,
+  currency?: string,
+  totalValue?: number,
+  grossWeight?: number,
+  netWeight?: number,
+  packages?: number,
+  countryOrigin?: string,
+  countryDest?: string,
+  status?: string,
+  declareDate?: string,
+  orderId?: string
+}) {
+  await ensureCustomsTables()
+  await exec(`INSERT INTO customs_headers(id,declaration_no,enterprise,consignor,consignee,port_code,trade_mode,currency,total_value,gross_weight,net_weight,packages,country_origin,country_dest,status,declare_date,order_id,updated_at)
+              VALUES($id,$no,$ent,$sn,$se,$pc,$tm,$cur,$tv,$gw,$nw,$pkg,$co,$cd,$st,$dd,$oid,$upd)
+              ON CONFLICT(id) DO UPDATE SET
+                declaration_no=$no, enterprise=$ent, consignor=$sn, consignee=$se, port_code=$pc, trade_mode=$tm,
+                currency=$cur, total_value=$tv, gross_weight=$gw, net_weight=$nw, packages=$pkg, country_origin=$co,
+                country_dest=$cd, status=$st, declare_date=$dd, order_id=$oid, updated_at=$upd`,{
+    $id:h.id,$no:h.declarationNo,$ent:h.enterprise||'',$sn:h.consignor||'',$se:h.consignee||'',$pc:h.portCode||'',
+    $tm:h.tradeMode||'',$cur:h.currency||'CNY',$tv:h.totalValue||0,$gw:h.grossWeight||0,$nw:h.netWeight||0,
+    $pkg:h.packages||0,$co:h.countryOrigin||'',$cd:h.countryDest||'',$st:h.status||'declared',
+    $dd:h.declareDate||new Date().toISOString().slice(0,10),$oid:h.orderId||'',$upd:new Date().toISOString()
+  })
+}
+
+export async function insertCustomsItem(it: {
+  id: string,
+  headerId: string,
+  lineNo?: number,
+  hsCode?: string,
+  name?: string,
+  spec?: string,
+  unit?: string,
+  qty?: number,
+  unitPrice?: number,
+  amount?: number,
+  originCountry?: string,
+  taxRate?: number,
+  tariff?: number,
+  excise?: number,
+  vat?: number
+}) {
+  await ensureCustomsTables()
+  await exec(`INSERT INTO customs_items(id,header_id,line_no,hs_code,name,spec,unit,qty,unit_price,amount,origin_country,tax_rate,tariff,excise,vat)
+              VALUES($id,$hid,$ln,$hs,$name,$spec,$unit,$qty,$up,$amt,$oc,$tr,$tar,$ex,$vat)
+              ON CONFLICT(id) DO UPDATE SET
+                header_id=$hid, line_no=$ln, hs_code=$hs, name=$name, spec=$spec, unit=$unit, qty=$qty, unit_price=$up,
+                amount=$amt, origin_country=$oc, tax_rate=$tr, tariff=$tar, excise=$ex, vat=$vat`,{
+    $id:it.id,$hid:it.headerId,$ln:it.lineNo||0,$hs:it.hsCode||'',$name:it.name||'',$spec:it.spec||'',
+    $unit:it.unit||'',$qty:it.qty||0,$up:it.unitPrice||0,$amt:it.amount||0,$oc:it.originCountry||'',
+    $tr:it.taxRate||0,$tar:it.tariff||0,$ex:it.excise||0,$vat:it.vat||0
+  })
+}
+
+export function computeTaxes(hsCode: string, amount: number) {
+  const p = hsCode ? hsCode.slice(0,4) : ''
+  let tariffRate = 0.08
+  let vatRate = 0.13
+  let exciseRate = 0
+  if (p==='3304') { tariffRate = 0.10; exciseRate = 0.10; vatRate = 0.13 }
+  else if (p==='2204') { tariffRate = 0.14; exciseRate = 0.10; vatRate = 0.13 }
+  else if (p==='8537' || p==='8517' || p==='8525') { tariffRate = 0.05; vatRate = 0.13; exciseRate = 0 }
+  const tariff = Math.round(amount * tariffRate * 100) / 100
+  const excise = Math.round(amount * exciseRate * 100) / 100
+  const vatBase = amount + tariff + excise
+  const vat = Math.round(vatBase * vatRate * 100) / 100
+  return { tariffRate, vatRate, exciseRate, tariff, vat, excise }
+}
+
+export async function getCustomsHeadersPaged(q: string, status: string, portCode: string, tradeMode: string, offset: number, limit: number) {
+  await ensureCustomsTables()
+  const where: string[] = []
+  const params: any = { $offset: offset, $limit: limit }
+  if (q) { where.push(`(declaration_no LIKE $q OR enterprise LIKE $q OR consignor LIKE $q OR consignee LIKE $q)`); params.$q = `%${q}%` }
+  if (status && status!=='all') { where.push(`status = $st`); params.$st = status }
+  if (portCode && portCode!=='all') { where.push(`port_code = $pc`); params.$pc = portCode }
+  if (tradeMode && tradeMode!=='all') { where.push(`trade_mode = $tm`); params.$tm = tradeMode }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  return queryAll(`SELECT id, declaration_no as declarationNo, enterprise, consignor, consignee, port_code as portCode, trade_mode as tradeMode, currency, total_value as totalValue, gross_weight as grossWeight, net_weight as netWeight, packages, country_origin as countryOrigin, country_dest as countryDest, status, declare_date as declareDate, updated_at as updatedAt FROM customs_headers ${whereSql} ORDER BY declare_date DESC LIMIT $limit OFFSET $offset`, params)
+}
+
+export async function countCustomsHeaders(q: string, status: string, portCode: string, tradeMode: string) {
+  await ensureCustomsTables()
+  const where: string[] = []
+  const params: any = {}
+  if (q) { where.push(`(declaration_no LIKE $q OR enterprise LIKE $q OR consignor LIKE $q OR consignee LIKE $q)`); params.$q = `%${q}%` }
+  if (status && status!=='all') { where.push(`status = $st`); params.$st = status }
+  if (portCode && portCode!=='all') { where.push(`port_code = $pc`); params.$pc = portCode }
+  if (tradeMode && tradeMode!=='all') { where.push(`trade_mode = $tm`); params.$tm = tradeMode }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const rows = await queryAll(`SELECT COUNT(*) as c FROM customs_headers ${whereSql}`, params)
+  return rows[0]?.c || 0
+}
+
+export async function getCustomsItems(headerId: string) {
+  await ensureCustomsTables()
+  return queryAll(`SELECT id, header_id as headerId, line_no as lineNo, hs_code as hsCode, name, spec, unit, qty, unit_price as unitPrice, amount, origin_country as originCountry, tax_rate as taxRate, tariff, excise, vat FROM customs_items WHERE header_id=$hid ORDER BY line_no`,{ $hid: headerId })
+}
+
 export async function getDashboardStats() {
   const gmv = (await queryAll(`SELECT SUM(amount) as s FROM orders WHERE status='completed'`))[0]?.s || 0
   const activeOrders = (await queryAll(`SELECT COUNT(*) as c FROM orders WHERE status!='completed'`))[0]?.c || 0
@@ -752,7 +938,7 @@ export async function getTradeStreamBatch(offset: number, limit: number) {
 }
 
 export async function getPortsCongestion() {
-  return queryAll(`SELECT port, idx as index, updated_at as updatedAt FROM ports_congestion`)
+  return queryAll(`SELECT port, idx as congestionIndex, updated_at as updatedAt FROM ports_congestion`)
 }
 
 export async function updatePortCongestion(port: string, index: number) {
