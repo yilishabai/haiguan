@@ -1,8 +1,86 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
-import { Package, Truck, CreditCard, Shield, Factory, TrendingUp, AlertTriangle, CheckCircle, Clock, DollarSign, Globe, BarChart3 } from 'lucide-react';
+import { Package, Truck, CreditCard, Shield, Factory, TrendingUp, AlertTriangle, CheckCircle, Clock, DollarSign, Globe, BarChart3, X, FileText, Activity, Eye } from 'lucide-react';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
 import { BeautyDemo } from '../components/BeautyDemo';
+import { getSettlements, getCustomsClearances, getLogisticsData, getPaymentMethods, getInventoryData, queryAll, updateSettlementStatus, updateCustomsStatus } from '../lib/sqlite';
+
+const DetailModal = ({ isOpen, onClose, title, data, type, onAction }: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  title: string; 
+  data: any; 
+  type: 'settlement' | 'customs' | 'logistics' | 'inventory';
+  onAction: (action: string) => void;
+}) => {
+  if (!isOpen || !data) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-[#0B1120] border border-cyber-cyan/30 rounded-xl p-6 w-[500px] shadow-[0_0_30px_rgba(0,240,255,0.15)] relative">
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors">
+          <X size={20} />
+        </button>
+        
+        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+          <Activity size={20} className="text-cyber-cyan" />
+          {title}
+        </h3>
+        
+        <div className="space-y-4 mb-8">
+          {Object.entries(data).map(([key, value]) => {
+            if (key === 'id' || key === 'status' || key === 'riskLevel' || key === 'compliance' || key === 'riskScore') return null;
+            return (
+              <div key={key} className="flex justify-between border-b border-gray-800 pb-2">
+                <span className="text-gray-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                <span className="text-white font-mono">{String(value)}</span>
+              </div>
+            );
+          })}
+          
+          <div className="flex justify-between border-b border-gray-800 pb-2">
+            <span className="text-gray-400">Status</span>
+            <StatusBadge status={data.status} />
+          </div>
+        </div>
+        
+        <div className="flex justify-end gap-3">
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            关闭
+          </button>
+          
+          {type === 'settlement' && data.status === 'pending' && (
+             <GlowButton onClick={() => onAction('approve')} size="sm">
+               审核通过
+             </GlowButton>
+          )}
+          
+          {type === 'customs' && data.status === 'inspecting' && (
+             <GlowButton onClick={() => onAction('release')} size="sm">
+               放行
+             </GlowButton>
+          )}
+
+          {type === 'logistics' && (
+             <GlowButton onClick={() => onAction('track')} size="sm">
+               实时追踪
+             </GlowButton>
+          )}
+          
+          {(data.status === 'completed' || data.status === 'cleared') && (
+             <GlowButton onClick={() => onAction('download')} size="sm" variant="secondary">
+               <FileText size={14} className="mr-2" />
+               下载凭证
+             </GlowButton>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface CollaborationProcess {
   id: string;
@@ -63,115 +141,90 @@ export const Collaboration: React.FC = () => {
   const [logisticsData, setLogisticsData] = useState<LogisticsInfo[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentData[]>([]);
   const [inventoryData, setInventoryData] = useState<any[]>([]);
+  const [overviewSeries, setOverviewSeries] = useState<any[]>([]);
+  
+  // Modal State
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [modalType, setModalType] = useState<'settlement' | 'customs' | 'logistics' | 'inventory'>('settlement');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const modalTitle = modalType === 'settlement' ? '订单结算详情' : modalType === 'customs' ? '报关通关详情' : modalType === 'logistics' ? '智能物流详情' : '库存生产详情';
 
-  // 实时数据模拟
+  const handleOpenModal = (item: any, type: 'settlement' | 'customs' | 'logistics' | 'inventory') => {
+    setSelectedItem(item);
+    setModalType(type);
+    setIsModalOpen(true);
+  };
+
+  const handleAction = async (action: string) => {
+    if (action === 'approve' && selectedItem) {
+      await updateSettlementStatus(selectedItem.id, 'completed');
+      const s = await getSettlements();
+      setOrderSettlements(s as any);
+    } else if (action === 'release' && selectedItem) {
+      await updateCustomsStatus(selectedItem.id, 'cleared');
+      const c = await getCustomsClearances();
+      setCustomsClearances(c as any);
+    } else if (action === 'track') {
+      setActiveTab('logistics');
+    } else if (action === 'download' && selectedItem) {
+      const blob = new Blob([JSON.stringify(selectedItem, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${modalType}-detail-${selectedItem.id || 'item'}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    setIsModalOpen(false);
+  };
+
   useEffect(() => {
-    const generateCollaborationProcesses = (): CollaborationProcess[] => [
-      {
-        id: 'order-settlement',
-        name: '订单结算协同',
-        status: 'active',
-        progress: 87.3,
-        enterprises: 1247,
-        avgTime: 2.1,
-        successRate: 98.7
-      },
-      {
-        id: 'customs-clearance',
-        name: '报关通关协同',
-        status: 'active',
-        progress: 92.5,
-        enterprises: 892,
-        avgTime: 1.8,
-        successRate: 99.2
-      },
-      {
-        id: 'intelligent-logistics',
-        name: '智能物流协同',
-        status: 'warning',
-        progress: 76.8,
-        enterprises: 634,
-        avgTime: 3.2,
-        successRate: 94.3
-      },
-      {
-        id: 'cross-border-payment',
-        name: '跨境支付协同',
-        status: 'active',
-        progress: 89.1,
-        enterprises: 1156,
-        avgTime: 1.5,
-        successRate: 99.8
-      },
-      {
-        id: 'inventory-production',
-        name: '库存生产协同',
-        status: 'pending',
-        progress: 68.4,
-        enterprises: 789,
-        avgTime: 4.7,
-        successRate: 91.6
+    const load = async () => {
+      const settlements = await getSettlements();
+      const customs = await getCustomsClearances();
+      const logistics = await getLogisticsData();
+      const payments = await getPaymentMethods();
+      const inventory = await getInventoryData();
+      setOrderSettlements(settlements as any);
+      setCustomsClearances(customs as any);
+      setLogisticsData(logistics as any);
+      setPaymentMethods(payments as any);
+      setInventoryData(inventory as any);
+
+      const enterprises = await queryAll(`SELECT COUNT(DISTINCT enterprise) as c FROM orders`);
+      const settleCompleted = (await queryAll(`SELECT COUNT(*) as c FROM settlements WHERE status='completed'`))[0]?.c || 0;
+      const settleTotal = (await queryAll(`SELECT COUNT(*) as c FROM settlements`))[0]?.c || 1;
+      const settleAvg = (await queryAll(`SELECT AVG(settlement_time) as a FROM settlements WHERE settlement_time>0`))[0]?.a || 0;
+      const customsCleared = (await queryAll(`SELECT COUNT(*) as c FROM customs_clearances WHERE status='cleared'`))[0]?.c || 0;
+      const customsTotal = (await queryAll(`SELECT COUNT(*) as c FROM customs_clearances`))[0]?.c || 1;
+      const logisticsCompleted = (await queryAll(`SELECT COUNT(*) as c FROM logistics WHERE status='completed'`))[0]?.c || 0;
+      const logisticsTotal = (await queryAll(`SELECT COUNT(*) as c FROM logistics`))[0]?.c || 1;
+      const invProgress = inventory.reduce((sum: number, x: any) => sum + Math.min(100, (x.current * 100.0) / (x.target || 1)), 0) / (inventory.length || 1);
+
+      const processes: CollaborationProcess[] = [
+        { id:'order-settlement', name:'订单结算协同', status:'active', progress: Number(((settleCompleted*100)/settleTotal).toFixed(1)), enterprises: enterprises[0]?.c || 0, avgTime: Number((settleAvg||0).toFixed(1)), successRate: Number(((settleCompleted*100)/settleTotal).toFixed(1)) },
+        { id:'customs-clearance', name:'报关通关协同', status:'active', progress: Number(((customsCleared*100)/customsTotal).toFixed(1)), enterprises: enterprises[0]?.c || 0, avgTime: 1.8, successRate: Number(((customsCleared*100)/customsTotal).toFixed(1)) },
+        { id:'intelligent-logistics', name:'智能物流协同', status: logisticsCompleted < logisticsTotal ? 'warning' : 'active', progress: Number(((logisticsCompleted*100)/logisticsTotal).toFixed(1)), enterprises: enterprises[0]?.c || 0, avgTime: 3.2, successRate: Number(((logisticsCompleted*100)/logisticsTotal).toFixed(1)) },
+        { id:'cross-border-payment', name:'跨境支付协同', status:'active', progress: Number(((settleCompleted*100)/settleTotal).toFixed(1)), enterprises: enterprises[0]?.c || 0, avgTime: 1.5, successRate: Number(((settleCompleted*100)/settleTotal).toFixed(1)) },
+        { id:'inventory-production', name:'库存生产协同', status:'pending', progress: Number(invProgress.toFixed(1)), enterprises: enterprises[0]?.c || 0, avgTime: 4.7, successRate: Number(invProgress.toFixed(1)) }
+      ];
+      setCollaborationProcesses(processes);
+
+      const hours = ['00:00','04:00','08:00','12:00','16:00','20:00'];
+      const series = [] as any[];
+      for (const h of hours) {
+        const orderCount = (await queryAll(`SELECT COUNT(*) as c FROM orders WHERE substr(created_at,12,2)=$h`, { $h: h.slice(0,2) }))[0]?.c || 0;
+        const customsCount = (await queryAll(`SELECT COUNT(*) as c FROM customs_clearances`))[0]?.c || 0;
+        const logisticsCount = (await queryAll(`SELECT COUNT(*) as c FROM logistics`))[0]?.c || 0;
+        const paymentCount = (await queryAll(`SELECT SUM(volume) as v FROM payments`))[0]?.v || 0;
+        const inventoryCount = (await queryAll(`SELECT SUM(current) as c FROM inventory`))[0]?.c || 0;
+        series.push({ name: h, 订单结算: orderCount, 报关通关: customsCount, 智能物流: logisticsCount, 跨境支付: paymentCount, 库存生产: inventoryCount })
       }
-    ];
-
-    const generateOrderSettlements = (): OrderSettlement[] => [
-      { id: '1', orderNo: 'OS20241227001', enterprise: '上海美妆集团', amount: 285000, currency: 'USD', status: 'completed', settlementTime: 1.8, riskLevel: 'low' },
-      { id: '2', orderNo: 'OS20241227002', enterprise: '深圳电子科技', amount: 156000, currency: 'EUR', status: 'processing', settlementTime: 2.3, riskLevel: 'medium' },
-      { id: '3', orderNo: 'OS20241227003', enterprise: '广州食品进出口', amount: 89000, currency: 'USD', status: 'pending', settlementTime: 0, riskLevel: 'high' },
-      { id: '4', orderNo: 'OS20241227004', enterprise: '宁波服装贸易', amount: 234000, currency: 'GBP', status: 'completed', settlementTime: 1.5, riskLevel: 'low' },
-      { id: '5', orderNo: 'OS20241227005', enterprise: '青岛机械制造', amount: 445000, currency: 'USD', status: 'failed', settlementTime: 5.2, riskLevel: 'high' }
-    ];
-
-    const generateCustomsClearances = (): CustomsClearance[] => [
-      { id: '1', declarationNo: 'CD20241227001', product: '化妆品套装', enterprise: '上海美妆集团', status: 'cleared', clearanceTime: 2.1, compliance: 98.5, riskScore: 12 },
-      { id: '2', declarationNo: 'CD20241227002', product: '智能手机', enterprise: '深圳电子科技', status: 'inspecting', clearanceTime: 1.8, compliance: 94.2, riskScore: 28 },
-      { id: '3', declarationNo: 'CD20241227003', product: '红酒礼盒', enterprise: '广州食品进出口', status: 'declared', clearanceTime: 0, compliance: 89.7, riskScore: 45 },
-      { id: '4', declarationNo: 'CD20241227004', product: '时尚服装', enterprise: '宁波服装贸易', status: 'held', clearanceTime: 4.2, compliance: 76.3, riskScore: 67 },
-      { id: '5', declarationNo: 'CD20241227005', product: '机械设备', enterprise: '青岛机械制造', status: 'cleared', clearanceTime: 1.5, compliance: 99.1, riskScore: 8 }
-    ];
-
-    const generateLogisticsData = (): LogisticsInfo[] => [
-      { id: '1', trackingNo: 'SF1234567890', origin: '上海', destination: '纽约', status: 'delivery', estimatedTime: 72, actualTime: 68, efficiency: 94.4 },
-      { id: '2', trackingNo: 'YT0987654321', origin: '深圳', destination: '伦敦', status: 'customs', estimatedTime: 96, actualTime: 89, efficiency: 92.7 },
-      { id: '3', trackingNo: 'ZTO1122334455', origin: '广州', destination: '东京', status: 'transit', estimatedTime: 48, actualTime: 45, efficiency: 93.8 },
-      { id: '4', trackingNo: 'EMS5566778899', origin: '宁波', destination: '悉尼', status: 'pickup', estimatedTime: 120, actualTime: 115, efficiency: 95.8 },
-      { id: '5', trackingNo: 'JD2233445566', origin: '青岛', destination: '新加坡', status: 'completed', estimatedTime: 60, actualTime: 58, efficiency: 96.7 }
-    ];
-
-    const generatePaymentMethods = (): PaymentData[] => [
-      { method: '信用证', volume: 3421, amount: 12500000, successRate: 99.8, avgTime: 2.1 },
-      { method: '电汇', volume: 5678, amount: 8900000, successRate: 98.5, avgTime: 1.8 },
-      { method: '支付宝', volume: 8923, amount: 5600000, successRate: 99.9, avgTime: 0.5 },
-      { method: '微信支付', volume: 4567, amount: 3200000, successRate: 99.7, avgTime: 0.3 },
-      { method: '数字货币', volume: 234, amount: 1800000, successRate: 95.2, avgTime: 3.5 }
-    ];
-
-    const generateInventoryData = () => [
-      { name: '化妆品', current: 12500, target: 15000, production: 2800, sales: 3200, efficiency: 83.3 },
-      { name: '电子产品', current: 8900, target: 12000, production: 2100, sales: 1950, efficiency: 74.2 },
-      { name: '服装', current: 15600, target: 18000, production: 4200, sales: 3800, efficiency: 86.7 },
-      { name: '食品', current: 6800, target: 8000, production: 1500, sales: 1700, efficiency: 85.0 },
-      { name: '机械设备', current: 3200, target: 4500, production: 800, sales: 750, efficiency: 71.1 }
-    ];
-
-    setCollaborationProcesses(generateCollaborationProcesses());
-    setOrderSettlements(generateOrderSettlements());
-    setCustomsClearances(generateCustomsClearances());
-    setLogisticsData(generateLogisticsData());
-    setPaymentMethods(generatePaymentMethods());
-    setInventoryData(generateInventoryData());
-
-    const interval = setInterval(() => {
-      // 模拟实时数据更新
-      setCollaborationProcesses(generateCollaborationProcesses());
-      setOrderSettlements(generateOrderSettlements());
-      setCustomsClearances(generateCustomsClearances());
-      setLogisticsData(generateLogisticsData());
-      setPaymentMethods(generatePaymentMethods());
-      setInventoryData(generateInventoryData());
-    }, 3000);
-
-    return () => clearInterval(interval);
+      setOverviewSeries(series)
+    };
+    load();
   }, []);
 
   const getStatusIcon = (status: string) => {
@@ -200,14 +253,7 @@ export const Collaboration: React.FC = () => {
     }
   };
 
-  const overviewData = [
-    { name: '00:00', 订单结算: 120, 报关通关: 98, 智能物流: 85, 跨境支付: 110, 库存生产: 75 },
-    { name: '04:00', 订单结算: 98, 报关通关: 102, 智能物流: 92, 跨境支付: 95, 库存生产: 88 },
-    { name: '08:00', 订单结算: 156, 报关通关: 145, 智能物流: 128, 跨境支付: 162, 库存生产: 135 },
-    { name: '12:00', 订单结算: 189, 报关通关: 178, 智能物流: 156, 跨境支付: 195, 库存生产: 167 },
-    { name: '16:00', 订单结算: 167, 报关通关: 165, 智能物流: 148, 跨境支付: 172, 库存生产: 152 },
-    { name: '20:00', 订单结算: 143, 报关通关: 138, 智能物流: 125, 跨境支付: 148, 库存生产: 128 }
-  ];
+  const overviewData = overviewSeries;
 
   const paymentPieData = paymentMethods.map((item, index) => ({
     name: item.method,
@@ -352,10 +398,10 @@ export const Collaboration: React.FC = () => {
         {activeTab === 'settlement' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <DataCard title="今日结算总额" value="$2.8M" unit="美元" trend="up" status="good" />
-              <DataCard title="结算订单数" value="156" unit="笔" trend="up" status="good" />
-              <DataCard title="平均结算时间" value="1.8" unit="小时" trend="down" status="good" />
-              <DataCard title="结算成功率" value="98.7" unit="%" trend="up" status="excellent" />
+              <DataCard title="今日结算总额" value={orderSettlements.reduce((s, x) => s + (x.amount||0), 0).toLocaleString()} unit="USD" trend="up" status="active" />
+              <DataCard title="结算订单数" value={orderSettlements.length} unit="笔" trend="up" status="active" />
+              <DataCard title="平均结算时间" value={(orderSettlements.reduce((s, x) => s + (x.settlementTime||0), 0) / (orderSettlements.length||1)).toFixed(1)} unit="小时" trend="down" status="active" />
+              <DataCard title="结算成功率" value={(orderSettlements.filter(x => x.status==='completed').length * 100 / (orderSettlements.length||1)).toFixed(1)} unit="%" trend="up" status="active" />
             </div>
 
             <HudPanel className="p-6">
@@ -374,7 +420,11 @@ export const Collaboration: React.FC = () => {
                   </thead>
                   <tbody>
                     {orderSettlements.map((order) => (
-                      <tr key={order.id} className="border-b border-gray-800 hover:bg-gray-800">
+                      <tr
+                        key={order.id}
+                        className="border-b border-gray-800 hover:bg-gray-800 cursor-pointer"
+                        onClick={() => handleOpenModal(order, 'settlement')}
+                      >
                         <td className="py-3 px-4 text-cyber-cyan">{order.orderNo}</td>
                         <td className="py-3 px-4 text-white">{order.enterprise}</td>
                         <td className="py-3 px-4 text-white">
@@ -426,7 +476,11 @@ export const Collaboration: React.FC = () => {
                   </thead>
                   <tbody>
                     {customsClearances.map((clearance) => (
-                      <tr key={clearance.id} className="border-b border-gray-800 hover:bg-gray-800">
+                      <tr
+                        key={clearance.id}
+                        className="border-b border-gray-800 hover:bg-gray-800 cursor-pointer"
+                        onClick={() => handleOpenModal(clearance, 'customs')}
+                      >
                         <td className="py-3 px-4 text-cyber-cyan">{clearance.declarationNo}</td>
                         <td className="py-3 px-4 text-white">{clearance.product}</td>
                         <td className="py-3 px-4 text-white">{clearance.enterprise}</td>
@@ -479,7 +533,11 @@ export const Collaboration: React.FC = () => {
                   </thead>
                   <tbody>
                     {logisticsData.map((logistics) => (
-                      <tr key={logistics.id} className="border-b border-gray-800 hover:bg-gray-800">
+                      <tr
+                        key={logistics.id}
+                        className="border-b border-gray-800 hover:bg-gray-800 cursor-pointer"
+                        onClick={() => handleOpenModal(logistics, 'logistics')}
+                      >
                         <td className="py-3 px-4 text-cyber-cyan">{logistics.trackingNo}</td>
                         <td className="py-3 px-4 text-white">{logistics.origin}</td>
                         <td className="py-3 px-4 text-white">{logistics.destination}</td>
@@ -594,7 +652,11 @@ export const Collaboration: React.FC = () => {
                   </thead>
                   <tbody>
                     {inventoryData.map((item, index) => (
-                      <tr key={index} className="border-b border-gray-800 hover:bg-gray-800">
+                      <tr
+                        key={index}
+                        className="border-b border-gray-800 hover:bg-gray-800 cursor-pointer"
+                        onClick={() => handleOpenModal(item, 'inventory')}
+                      >
                         <td className="py-3 px-4 text-white font-medium">{item.name}</td>
                         <td className="py-3 px-4 text-white">{item.current.toLocaleString()}</td>
                         <td className="py-3 px-4 text-white">{item.target.toLocaleString()}</td>
@@ -614,6 +676,14 @@ export const Collaboration: React.FC = () => {
           </div>
         )}
       </div>
+      <DetailModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={modalTitle}
+        data={selectedItem}
+        type={modalType}
+        onAction={handleAction}
+      />
     </div>
   );
 };

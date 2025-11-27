@@ -5,16 +5,18 @@ interface HudPanelProps {
   className?: string;
   title?: string;
   subtitle?: string;
+  onClick?: () => void;
 }
 
 export const HudPanel: React.FC<HudPanelProps> = ({ 
   children, 
   className = '', 
   title,
-  subtitle 
+  subtitle,
+  onClick 
 }) => {
   return (
-    <div className={`hud-panel ${className}`}>
+    <div className={`hud-panel ${onClick ? 'cursor-pointer hover:border-cyber-cyan/40' : ''} ${className}`} onClick={onClick}>
       {(title || subtitle) && (
         <div className="mb-4">
           {title && <h3 className="hud-title">{title}</h3>}
@@ -34,6 +36,7 @@ interface DataCardProps {
   unit?: string;
   trend?: 'up' | 'down' | 'stable';
   status?: 'active' | 'warning' | 'error';
+  onClick?: () => void;
 }
 
 export const DataCard: React.FC<DataCardProps> = ({ 
@@ -43,7 +46,8 @@ export const DataCard: React.FC<DataCardProps> = ({
   value,
   unit,
   trend,
-  status = 'active'
+  status = 'active',
+  onClick
 }) => {
   const trendIcons = {
     up: '▲',
@@ -58,7 +62,7 @@ export const DataCard: React.FC<DataCardProps> = ({
   };
 
   return (
-    <div className={`data-card ${className}`}>
+    <div className={`data-card ${onClick ? 'cursor-pointer hover:border-cyber-cyan/40' : ''} ${className}`} onClick={onClick}>
       <div className="flex items-center justify-between mb-2">
         {title && <h4 className="text-sm font-medium text-gray-300">{title}</h4>}
         <span className={`status-indicator ${status}`}></span>

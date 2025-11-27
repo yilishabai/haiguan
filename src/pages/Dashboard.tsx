@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { HudPanel, DataCard, MetricDisplay, StatusBadge } from '../components/ui/HudPanel';
 import LogisticsMap from '../components/charts/LogisticsMap';
+import { useNavigate } from 'react-router-dom';
+import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getSettings } from '../lib/sqlite';
 import { 
   TrendingUp,
   Package,
@@ -13,83 +15,42 @@ import {
   CheckCircle
 } from 'lucide-react';
 
-// 模拟实时数据
-const generateRealTimeData = () => {
-  const now = new Date();
-  const timeLabels = [];
-  const responseTimeData = [];
-  const enterpriseData = [];
-  const orderData = [];
-  
-  for (let i = 23; i >= 0; i--) {
-    const time = new Date(now.getTime() - i * 60 * 60 * 1000);
-    timeLabels.push(time.getHours() + ':00');
-    responseTimeData.push({
-      time: time.getHours() + ':00',
-      responseTime: Math.random() * 0.8 + 0.5,
-      target: 2.0
-    });
-    enterpriseData.push({
-      time: time.getHours() + ':00',
-      online: Math.floor(Math.random() * 500) + 800,
-      active: Math.floor(Math.random() * 300) + 400
-    });
-    orderData.push({
-      time: time.getHours() + ':00',
-      orders: Math.floor(Math.random() * 200) + 300,
-      completed: Math.floor(Math.random() * 150) + 200
-    });
-  }
-  
-  return { timeLabels, responseTimeData, enterpriseData, orderData };
-};
-
-const categoryDistribution = [
-  { name: '美妆', value: 45, color: '#00F0FF' },
-  { name: '酒水', value: 30, color: '#2E5CFF' },
-  { name: '家电', value: 25, color: '#10B981' }
-];
-
-const processFunnel = [
-  { stage: '订单', count: 8921 },
-  { stage: '支付', count: 8756 },
-  { stage: '通关', count: 8620 },
-  { stage: '物流', count: 8510 },
-  { stage: '仓库', count: 8390 }
-];
-
-const realtimeMetrics = {
-  gmv: 45200000,
-  activeOrders: 8921,
-  customsRate: 98.5,
-  logisticsException: 3,
-  successRate: 99.8,
-  dataSyncDelay: 0.8,
-  systemLoad: 68.5
-};
+const COLORS = ['#00F0FF', '#2E5CFF', '#10B981', '#F59E0B', '#EF4444'];
 
 export const Dashboard: React.FC = () => {
-  const [metrics, setMetrics] = useState(realtimeMetrics);
-  const [chartData, setChartData] = useState(generateRealTimeData());
+  const navigate = useNavigate();
+  const [metrics, setMetrics] = useState({ gmv: 0, activeOrders: 0, customsRate: 0, logisticsException: 0, successRate: 0, dataSyncDelay: 0, systemLoad: 0 });
+  const [enterpriseSeries, setEnterpriseSeries] = useState<{ time: string; online: number; active: number }[]>([]);
+  const [categories, setCategories] = useState<{ name: string; value: number; color: string }[]>([]);
+  const [funnel, setFunnel] = useState<{ stage: string; count: number }[]>([]);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  // 模拟实时数据更新
   useEffect(() => {
-    const interval = setInterval(() => {
-      setMetrics(prev => ({
-        ...prev,
-        gmv: Math.max(0, prev.gmv + Math.floor(Math.random() * 50000 - 20000)),
-        activeOrders: Math.max(0, prev.activeOrders + Math.floor(Math.random() * 20 - 10)),
-        customsRate: Math.min(100, Math.max(90, prev.customsRate + (Math.random() - 0.5) * 0.2)),
-        logisticsException: Math.max(0, prev.logisticsException + Math.floor(Math.random() * 3 - 1)),
-        successRate: Math.min(100, Math.max(95, prev.successRate + (Math.random() - 0.5) * 0.2)),
-        systemLoad: Math.min(100, Math.max(20, prev.systemLoad + (Math.random() - 0.5) * 5))
-      }));
-      setChartData(generateRealTimeData());
+    const load = async () => {
+      const s = await getDashboardStats();
+      const e = await getEnterpriseSeries();
+      const c = await getCategoryDistribution();
+      const f = await getProcessFunnel();
+      setMetrics(s);
+      setEnterpriseSeries(e);
+      setCategories(c.map(x=>({ name: x.name === 'beauty' ? '美妆' : x.name === 'wine' ? '酒水' : x.name === 'appliance' ? '家电' : x.name, value: x.value, color: x.color })));
+      setFunnel(f);
       setLastUpdate(new Date());
-    }, 3000);
-
-    return () => clearInterval(interval);
+    };
+    load();
+    let timer: any;
+    const setup = async () => {
+      try {
+        const rows = await getSettings();
+        const val = rows.find((r: any) => r.key === 'sync_interval')?.value || '5000';
+        const delay = Math.max(1000, parseInt(val) || 5000);
+        timer = setInterval(load, delay);
+      } catch (_) {
+        timer = setInterval(load, 5000);
+      }
+    };
+    setup();
+    return () => { if (timer) clearInterval(timer); };
   }, []);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -131,6 +92,7 @@ export const Dashboard: React.FC = () => {
           value={`¥ ${metrics.gmv.toLocaleString()}`}
           trend="up"
           status="active"
+          onClick={() => navigate('/collaboration')}
         >
           <div className="mt-4 flex items-center justify-between">
             <DollarSign className="text-cyber-cyan" size={24} />
@@ -144,6 +106,7 @@ export const Dashboard: React.FC = () => {
           unit="单"
           trend="up"
           status="active"
+          onClick={() => navigate('/collaboration')}
         >
           <div className="mt-4 flex items-center justify-between">
             <Package className="text-neon-blue" size={24} />
@@ -157,6 +120,7 @@ export const Dashboard: React.FC = () => {
           unit="%"
           trend="stable"
           status="active"
+          onClick={() => navigate('/acceptance')}
         >
           <div className="mt-4 flex items-center justify-between">
             <CheckCircle className="text-emerald-green" size={24} />
@@ -169,6 +133,7 @@ export const Dashboard: React.FC = () => {
           value={metrics.logisticsException}
           trend={metrics.logisticsException > 0 ? 'down' : 'stable'}
           status={metrics.logisticsException > 0 ? 'warning' : 'active'}
+          onClick={() => navigate('/collaboration')}
         >
           <div className="mt-4 flex items-center justify-between">
             <Truck className="text-alert-red" size={24} />
@@ -188,7 +153,7 @@ export const Dashboard: React.FC = () => {
         <HudPanel title="企业活跃度分析" subtitle="在线与活跃企业对比">
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData.enterpriseData}>
+              <AreaChart data={enterpriseSeries}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
                 <XAxis dataKey="time" stroke="#64748b" fontSize={12} />
                 <YAxis stroke="#64748b" fontSize={12} />
@@ -218,7 +183,7 @@ export const Dashboard: React.FC = () => {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={categoryDistribution}
+                  data={categories}
                   cx="50%"
                   cy="50%"
                   innerRadius={50}
@@ -226,7 +191,7 @@ export const Dashboard: React.FC = () => {
                   paddingAngle={4}
                   dataKey="value"
                 >
-                  {categoryDistribution.map((entry, index) => (
+                  {categories.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -235,7 +200,7 @@ export const Dashboard: React.FC = () => {
             </ResponsiveContainer>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
-            {categoryDistribution.map((item, index) => (
+            {categories.map((item, index) => (
               <div key={index} className="flex items-center space-x-2">
                 <div 
                   className="w-3 h-3 rounded" 
@@ -253,13 +218,13 @@ export const Dashboard: React.FC = () => {
       {/* 业务流程漏斗 */}
       <HudPanel title="流程漏斗" subtitle="订单 → 支付 → 通关 → 物流 → 仓库">
         <div className="flex items-center space-x-2 overflow-x-auto py-2">
-          {processFunnel.map((s, idx) => (
+          {funnel.map((s, idx) => (
             <div key={s.stage} className="flex items-center">
               <div className="px-4 py-3 rounded-lg border border-slate-700 bg-slate-800/50">
                 <div className="text-xs text-gray-400">{s.stage}</div>
                 <div className="digital-display text-emerald-green font-bold">{s.count.toLocaleString()}</div>
               </div>
-              {idx < processFunnel.length - 1 && (
+              {idx < funnel.length - 1 && (
                 <div className="mx-2 text-cyber-cyan">→</div>
               )}
             </div>

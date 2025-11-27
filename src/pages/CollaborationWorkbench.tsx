@@ -1,19 +1,38 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { CreditCard, Truck } from 'lucide-react'
 import { HudPanel, StatusBadge } from '../components/ui/HudPanel'
+import { queryAll } from '../lib/sqlite'
 
 export const CollaborationWorkbench: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<string | null>(null)
   const [copilotOpen, setCopilotOpen] = useState(true)
+  const [tasks, setTasks] = useState<{ id:string; title:string; route:string; tags:string[] }[]>([])
 
-  const tasks = [
-    { id: 'PO-2025-8812', title: '雅诗兰黛小棕瓶 x 5000', route: '🇫🇷 -> 🇨🇳', tags: ['等待报关', '美妆'] },
-    { id: 'PO-2025-7741', title: '科颜氏安白瓶 x 3000', route: '🇫🇷 -> 🇨🇳', tags: ['支付处理中', '美妆'] },
-    { id: 'PO-2025-6620', title: '法国红酒 AOC x 1200', route: '🇫🇷 -> 🇨🇳', tags: ['待报关', '酒水'] },
-    { id: 'PO-2025-5508', title: '松下电吹风 x 800', route: '🇯🇵 -> 🇨🇳', tags: ['物流在途', '家电'] },
-    { id: 'PO-2025-4495', title: '香奈儿粉底液 x 2000', route: '🇫🇷 -> 🇨🇳', tags: ['异常阻断', '美妆'] },
-    { id: 'PO-2025-3381', title: '海蓝之谜精华 x 1000', route: '🇫🇷 -> 🇨🇳', tags: ['待支付', '美妆'] }
-  ]
+  useEffect(() => {
+    const load = async () => {
+      const rows = await queryAll(`
+        SELECT o.id as id, o.order_number as orderNo, o.enterprise as ent, o.category as cat,
+               (SELECT status FROM settlements s WHERE s.order_id=o.id LIMIT 1) as payStatus,
+               (SELECT status FROM customs_clearances c WHERE c.order_id=o.id LIMIT 1) as customsStatus,
+               (SELECT origin||' -> '||destination FROM logistics l ORDER BY l.id LIMIT 1) as route
+        FROM orders o
+        ORDER BY o.created_at DESC LIMIT 12
+      `)
+      const t = rows.map(r => {
+        const tags = [] as string[]
+        if (r.customsStatus==='declared') tags.push('待报关')
+        if (r.customsStatus==='held') tags.push('异常阻断')
+        if (r.payStatus==='processing') tags.push('支付处理中')
+        if (r.payStatus==='pending') tags.push('待支付')
+        if (!tags.length) tags.push('处理中')
+        const catTag = r.cat==='beauty'?'美妆':r.cat==='wine'?'酒水':r.cat==='appliance'?'家电':r.cat==='electronics'?'电子':'纺织'
+        tags.push(catTag)
+        return { id: r.orderNo, title: r.ent, route: r.route || '🇫🇷 -> 🇨🇳', tags }
+      })
+      setTasks(t)
+    }
+    load()
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -143,4 +162,3 @@ export const CollaborationWorkbench: React.FC = () => {
 }
 
 export default CollaborationWorkbench
-

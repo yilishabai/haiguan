@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, PieChart, Pie, Cell } from 'recharts';
+import * as echarts from 'echarts';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
 import { 
   Brain, 
@@ -16,8 +17,14 @@ import {
   Upload,
   Eye,
   Edit,
-  Trash2
+  Trash2,
+  Code,
+  FileText,
+  Terminal,
+  X,
+  FileCode
 } from 'lucide-react';
+import { getAlgorithms, getBusinessModels, updateAlgorithmCode } from '../lib/sqlite';
 
 // 算法库数据
 const algorithmLibrary = [
@@ -33,7 +40,12 @@ const algorithmLibrary = [
     description: '基于机器学习的跨境供应链资源动态分配优化算法',
     features: ['实时调度', '多目标优化', '约束处理'],
     lastUpdated: '2025-11-15',
-    author: '算法研发部'
+    author: '算法研发部',
+    code: `def optimize_supply_chain(inventory_data):
+    # 跨境供应链资源动态优化算法 V2.1
+    model = Transformer(d_model=512)
+    risk_factor = calculate_customs_delay()
+    return model.predict(inventory_data, risk=risk_factor)`
   },
   {
     id: 'production-sales',
@@ -47,7 +59,12 @@ const algorithmLibrary = [
     description: '连接生产计划与销售预测的智能匹配算法',
     features: ['需求预测', '产能平衡', '风险预警'],
     lastUpdated: '2025-11-20',
-    author: '业务算法组'
+    author: '业务算法组',
+    code: `def match_production_sales(demand_signal, capacity):
+    # 产销衔接智能匹配 V1.8
+    forecast = Prophet.predict(demand_signal)
+    gap = capacity - forecast
+    return optimize_schedule(gap, strategy='min_cost')`
   },
   {
     id: 'inventory-optimization',
@@ -61,7 +78,12 @@ const algorithmLibrary = [
     description: '考虑需求不确定性的多级库存网络优化算法',
     features: ['安全库存', '补货策略', '成本优化'],
     lastUpdated: '2025-11-25',
-    author: '库存优化团队'
+    author: '库存优化团队',
+    code: `def optimize_inventory_levels(nodes, demand_dist):
+    # 多级库存网络优化 V3.0
+    network = Graph(nodes)
+    safety_stock = calculate_safety_stock(demand_dist, service_level=0.99)
+    return network.min_cost_flow(safety_stock)`
   },
   {
     id: 'process-control',
@@ -75,7 +97,14 @@ const algorithmLibrary = [
     description: '跨境供应链全流程实时监控与异常处理算法',
     features: ['异常检测', '流程优化', '质量控制'],
     lastUpdated: '2025-11-18',
-    author: '流程管控部'
+    author: '流程管控部',
+    code: `def monitor_process_flow(stream_data):
+    # 全流程实时监控 V2.5
+    anomaly_detector = IsolationForest(contamination=0.01)
+    anomalies = anomaly_detector.fit_predict(stream_data)
+    if anomalies.any():
+        trigger_alert(anomalies)
+    return process_status(stream_data)`
   },
   {
     id: 'collaborative-decision',
@@ -89,7 +118,12 @@ const algorithmLibrary = [
     description: '支持多方协同的智能决策响应算法',
     features: ['群体决策', '冲突解决', '方案评估'],
     lastUpdated: '2025-11-22',
-    author: '决策算法组'
+    author: '决策算法组',
+    code: `def collaborative_decision(proposals, weights):
+    # 协同决策响应 V1.3
+    matrix = build_decision_matrix(proposals)
+    consensus = calculate_consensus(matrix, weights)
+    return optimize_response(consensus, constraints)`
   }
 ];
 
@@ -152,15 +186,6 @@ const algorithmPerformance = [
   { name: '维护性', value: 92.3, fullMark: 100 }
 ];
 
-// 模型使用统计
-const modelUsageStats = [
-  { month: '2025-07', beauty: 234, wine: 156, appliance: 189 },
-  { month: '2025-08', beauty: 267, wine: 178, appliance: 203 },
-  { month: '2025-09', beauty: 298, wine: 195, appliance: 234 },
-  { month: '2025-10', beauty: 321, wine: 212, appliance: 256 },
-  { month: '2025-11', beauty: 345, wine: 234, appliance: 278 }
-];
-
 const categoryColors = {
   optimization: '#00F0FF',
   coordination: '#2E5CFF',
@@ -169,17 +194,199 @@ const categoryColors = {
   decision: '#FF3B30'
 };
 
-const statusColors = {
-  active: 'text-emerald-green',
-  testing: 'text-yellow-400',
-  development: 'text-cyber-cyan',
-  deprecated: 'text-gray-500'
+// --- Components ---
+
+const GaugeChart = ({ value }: { value: number }) => {
+  const chartRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const chart = echarts.init(chartRef.current);
+    
+    const option = {
+      series: [
+        {
+          type: 'gauge',
+          startAngle: 180,
+          endAngle: 0,
+          min: 0,
+          max: 100,
+          splitNumber: 5,
+          radius: '100%',
+          center: ['50%', '70%'],
+          itemStyle: {
+            color: '#00F0FF',
+            shadowColor: 'rgba(0, 240, 255, 0.45)',
+            shadowBlur: 10,
+            shadowOffsetX: 2,
+            shadowOffsetY: 2
+          },
+          progress: {
+            show: true,
+            roundCap: true,
+            width: 8
+          },
+          pointer: {
+            show: false
+          },
+          axisLine: {
+            roundCap: true,
+            lineStyle: {
+              width: 8,
+              color: [[1, 'rgba(255,255,255,0.1)']]
+            }
+          },
+          axisTick: { show: false },
+          splitLine: { show: false },
+          axisLabel: { show: false },
+          title: {
+            show: true,
+            fontSize: 12,
+            color: '#94a3b8',
+            offsetCenter: [0, '30%']
+          },
+          detail: {
+            valueAnimation: true,
+            fontSize: 24,
+            color: '#fff',
+            offsetCenter: [0, '-20%'],
+            formatter: '{value}%'
+          },
+          data: [
+            {
+              value: value,
+              name: '准确率'
+            }
+          ]
+        }
+      ]
+    };
+
+    chart.setOption(option);
+    
+    const handleResize = () => chart.resize();
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.dispose();
+    };
+  }, [value]);
+
+  return <div ref={chartRef} className="w-full h-32" />;
+};
+
+const UploadModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-[#0B1120] border border-cyber-cyan/30 rounded-xl p-6 w-[400px] shadow-[0_0_30px_rgba(0,240,255,0.15)] relative">
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors">
+          <X size={20} />
+        </button>
+        
+        <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+          <Upload size={20} className="text-cyber-cyan" />
+          导入模型
+        </h3>
+        <p className="text-gray-400 text-sm mb-6">支持 .py, .onnx 格式文件上传</p>
+        
+        <div className="border-2 border-dashed border-slate-700 hover:border-cyber-cyan/50 rounded-lg h-40 flex flex-col items-center justify-center bg-slate-800/20 transition-colors cursor-pointer group">
+          <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+            <Upload size={24} className="text-cyber-cyan" />
+          </div>
+          <p className="text-sm text-gray-300">点击或拖拽文件至此处</p>
+          <p className="text-xs text-gray-500 mt-1">最大支持 500MB</p>
+        </div>
+        
+        <div className="mt-6 flex justify-end gap-3">
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            取消
+          </button>
+          <GlowButton onClick={onClose} size="sm">
+            确认上传
+          </GlowButton>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export const Capabilities: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'algorithms' | 'models'>('algorithms');
-  const [selectedAlgorithm, setSelectedAlgorithm] = useState(algorithmLibrary[0]);
-  const [selectedModel, setSelectedModel] = useState(businessModels[0]);
+  const [algorithms, setAlgorithms] = useState<any[]>([]);
+  const [models, setModels] = useState<any[]>([]);
+  const [selectedAlgorithm, setSelectedAlgorithm] = useState<any>(algorithmLibrary[0]);
+  const [selectedModel, setSelectedModel] = useState<any>(businessModels[0]);
+  const [algPage, setAlgPage] = useState(1);
+  const [algPageSize, setAlgPageSize] = useState(5);
+  
+  // Right Panel State
+  const [rightPanelTab, setRightPanelTab] = useState<'overview' | 'code' | 'logs'>('overview');
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [isTestRunning, setIsTestRunning] = useState(false);
+  const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
+  
+  // New State for Interactivity
+  const [testParams, setTestParams] = useState({ batchSize: 32, epochs: 10 });
+  const [executionHistory, setExecutionHistory] = useState([
+    { id: 1, time: '10:23:15', input: 'Batch_#2094', status: 'Success', duration: '120ms' },
+    { id: 2, time: '10:23:20', input: 'Batch_#2095', status: 'Success', duration: '125ms' },
+    { id: 3, time: '10:23:25', input: 'Batch_#2096', status: 'Success', duration: '118ms' },
+    { id: 4, time: '10:23:30', input: 'Batch_#2097', status: 'Success', duration: '122ms' },
+    { id: 5, time: '10:23:35', input: 'Batch_#2098', status: 'Success', duration: '119ms' }
+  ]);
+
+  useEffect(() => {
+    const load = async () => {
+      const a = await getAlgorithms();
+      const m = await getBusinessModels();
+      const aa = a.map((x: any) => ({ ...x, features: JSON.parse(x.features) }));
+      const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance) }));
+      setAlgorithms(aa);
+      setModels(mm);
+      setSelectedAlgorithm(aa[0] || selectedAlgorithm);
+      setSelectedModel(mm[0] || selectedModel);
+      setAlgPage(1);
+    };
+    load();
+  }, []);
+
+  const handleRunTest = () => {
+    setIsTestRunning(true);
+    setRightPanelTab('code'); // Switch to code view to show terminal
+    setTerminalLogs([`> Initializing weights (Batch Size: ${testParams.batchSize})...`]);
+    
+    // Simulate testing process
+    setTimeout(() => {
+      setTerminalLogs(prev => [...prev, '> Loading model architecture...']);
+    }, 800);
+    setTimeout(() => {
+      setTerminalLogs(prev => [...prev, '> Allocating tensors...']);
+    }, 1600);
+    setTimeout(() => {
+      setTerminalLogs(prev => [...prev, `> Running inference on test batch (n=${testParams.batchSize})...`]);
+    }, 2400);
+    setTimeout(() => {
+      const duration = Math.floor(100 + Math.random() * 50);
+      setTerminalLogs(prev => [...prev, '> Verifying outputs...', `> Done (${duration/1000}s)`]);
+      setIsTestRunning(false);
+      
+      // Add to history
+      const newLog = {
+        id: Date.now(),
+        time: new Date().toLocaleTimeString(),
+        input: `Batch_#${Math.floor(Math.random() * 9000) + 1000}`,
+        status: 'Success',
+        duration: `${duration}ms`
+      };
+      setExecutionHistory(prev => [newLog, ...prev]);
+    }, 3200);
+  };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -199,6 +406,8 @@ export const Capabilities: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <UploadModal isOpen={showUploadModal} onClose={() => setShowUploadModal(false)} />
+
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
         <div>
@@ -207,7 +416,7 @@ export const Capabilities: React.FC = () => {
         </div>
         <div className="flex items-center space-x-2">
           <StatusBadge status="active" pulse>实时</StatusBadge>
-          <GlowButton size="sm">
+          <GlowButton size="sm" onClick={() => setShowUploadModal(true)}>
             <Upload size={16} className="mr-2" />
             导入模型
           </GlowButton>
@@ -246,7 +455,7 @@ export const Capabilities: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <DataCard
               title="总算法数"
-              value={algorithmLibrary.length}
+              value={(algorithms.length || algorithmLibrary.length)}
               unit="个"
               status="active"
             >
@@ -255,7 +464,7 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="活跃算法"
-              value={algorithmLibrary.filter(a => a.status === 'active').length}
+              value={(algorithms.length ? algorithms : algorithmLibrary).filter((a: any) => a.status === 'active').length}
               unit="个"
               status="active"
             >
@@ -264,7 +473,7 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="平均准确率"
-              value={(algorithmLibrary.reduce((sum, a) => sum + a.accuracy, 0) / algorithmLibrary.length).toFixed(1)}
+              value={(algorithms.length ? (algorithms.reduce((sum, a) => sum + a.accuracy, 0) / algorithms.length) : (algorithmLibrary.reduce((sum, a) => sum + a.accuracy, 0) / algorithmLibrary.length)).toFixed(1)}
               unit="%"
               status="active"
             >
@@ -273,7 +482,7 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="总调用次数"
-              value={algorithmLibrary.reduce((sum, a) => sum + a.usage, 0)}
+              value={(algorithms.length ? algorithms : algorithmLibrary).reduce((sum: number, a: any) => sum + a.usage, 0)}
               unit="次"
               status="active"
             >
@@ -282,7 +491,7 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="开发中"
-              value={algorithmLibrary.filter(a => a.status === 'development').length}
+              value={(algorithms.length ? algorithms : algorithmLibrary).filter((a: any) => a.status === 'development').length}
               unit="个"
               status="warning"
             >
@@ -295,7 +504,14 @@ export const Capabilities: React.FC = () => {
             <div className="lg:col-span-2">
               <HudPanel title="算法库管理" subtitle="核心算法列表与状态">
                 <div className="space-y-3">
-                  {algorithmLibrary.map((algorithm) => (
+                  {(() => {
+                    const list = algorithms.length ? algorithms : algorithmLibrary;
+                    const totalPages = Math.max(1, Math.ceil(list.length / algPageSize));
+                    const page = Math.min(algPage, totalPages);
+                    const start = (page - 1) * algPageSize;
+                    const items = list.slice(start, start + algPageSize);
+                    return items;
+                  })().map((algorithm: any) => (
                     <div
                       key={algorithm.id}
                       className={`p-4 rounded-lg border cursor-pointer transition-all duration-200 ${
@@ -343,20 +559,20 @@ export const Capabilities: React.FC = () => {
 
                       <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700">
                         <div className="flex flex-wrap gap-1">
-                          {algorithm.features.map((feature, index) => (
+                          {algorithm.features.map((feature: string, index: number) => (
                             <span key={index} className="px-2 py-1 bg-slate-700 text-xs rounded">
                               {feature}
                             </span>
                           ))}
                         </div>
                         <div className="flex items-center space-x-2">
-                          <button className="p-1 text-gray-400 hover:text-cyber-cyan">
+                          <button className="p-1 text-gray-400 hover:text-cyber-cyan" onClick={(e)=>{ e.stopPropagation(); setSelectedAlgorithm(algorithm); setRightPanelTab('overview'); }}>
                             <Eye size={14} />
                           </button>
-                          <button className="p-1 text-gray-400 hover:text-emerald-green">
+                          <button className="p-1 text-gray-400 hover:text-emerald-green" onClick={(e)=>{ e.stopPropagation(); setSelectedAlgorithm(algorithm); setRightPanelTab('code'); handleRunTest(); }}>
                             <Play size={14} />
                           </button>
-                          <button className="p-1 text-gray-400 hover:text-yellow-400">
+                          <button className="p-1 text-gray-400 hover:text-yellow-400" onClick={(e)=>{ e.stopPropagation(); setSelectedAlgorithm(algorithm); setRightPanelTab('code'); }}>
                             <Edit size={14} />
                           </button>
                         </div>
@@ -364,85 +580,204 @@ export const Capabilities: React.FC = () => {
                     </div>
                   ))}
                 </div>
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <span>每页</span>
+                    <select value={algPageSize} onChange={(e)=>setAlgPageSize(parseInt(e.target.value)||5)} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white">
+                      {[5,10,15].map(s=> (<option key={s} value={s}>{s}</option>))}
+                    </select>
+                    <span>项</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button className="px-2 py-1 rounded bg-gray-800 text-gray-200 border border-gray-700 disabled:opacity-50" onClick={()=>setAlgPage(p=>Math.max(1,p-1))}>上一页</button>
+                    <button className="px-2 py-1 rounded bg-gray-800 text-gray-200 border border-gray-700" onClick={()=>setAlgPage(p=>p+1)}>下一页</button>
+                  </div>
+                </div>
               </HudPanel>
             </div>
 
-            {/* 算法详情 */}
+            {/* 算法详情 (Refactored) */}
             <div>
-              <HudPanel title="算法详情" subtitle={selectedAlgorithm.name}>
-                <div className="space-y-4">
-                  <div className="p-3 bg-slate-800/50 rounded-lg">
-                    <h4 className="text-sm font-medium text-white mb-2">基本信息</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">版本</span>
-                        <span className="text-cyber-cyan">{selectedAlgorithm.version}</span>
+              <HudPanel className="h-full flex flex-col">
+                {/* Header with Title and Tabs */}
+                <div className="mb-4">
+                  <h3 className="hud-title mb-1">{selectedAlgorithm.name}</h3>
+                  <div className="flex items-center gap-1 border-b border-slate-700 pb-0">
+                    <button
+                      onClick={() => setRightPanelTab('overview')}
+                      className={`px-3 py-2 text-sm border-b-2 transition-colors ${
+                        rightPanelTab === 'overview'
+                          ? 'border-cyber-cyan text-cyber-cyan'
+                          : 'border-transparent text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      概览
+                    </button>
+                    <button
+                      onClick={() => setRightPanelTab('code')}
+                      className={`px-3 py-2 text-sm border-b-2 transition-colors flex items-center gap-1 ${
+                        rightPanelTab === 'code'
+                          ? 'border-cyber-cyan text-cyber-cyan'
+                          : 'border-transparent text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      核心源码
+                    </button>
+                    <button
+                      onClick={() => setRightPanelTab('logs')}
+                      className={`px-3 py-2 text-sm border-b-2 transition-colors ${
+                        rightPanelTab === 'logs'
+                          ? 'border-cyber-cyan text-cyber-cyan'
+                          : 'border-transparent text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      执行记录
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content Area */}
+                <div className="flex-1 min-h-[400px]">
+                  {rightPanelTab === 'overview' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-sm font-medium text-white">模型指标</h4>
+                          <StatusBadge status={selectedAlgorithm.status === 'active' ? 'active' : 'processing'}>
+                            {selectedAlgorithm.status}
+                          </StatusBadge>
+                        </div>
+                        <div className="flex items-center justify-center py-2">
+                           <GaugeChart value={selectedAlgorithm.accuracy} />
+                        </div>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">状态</span>
-                        <StatusBadge status={selectedAlgorithm.status === 'active' ? 'active' : 'processing'}>
-                          {selectedAlgorithm.status}
-                        </StatusBadge>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">作者</span>
-                        <span className="text-white">{selectedAlgorithm.author}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">更新时间</span>
-                        <span className="text-white">{selectedAlgorithm.lastUpdated}</span>
+
+                      <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
+                         <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500 block mb-1">Version</span>
+                              <span className="text-white font-mono">{selectedAlgorithm.version}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 block mb-1">Author</span>
+                              <span className="text-white">{selectedAlgorithm.author}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 block mb-1">Updated</span>
+                              <span className="text-white">{selectedAlgorithm.lastUpdated}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 block mb-1">Usage</span>
+                              <span className="text-white font-mono">{selectedAlgorithm.usage.toLocaleString()}</span>
+                            </div>
+                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="p-3 bg-slate-800/50 rounded-lg">
-                    <h4 className="text-sm font-medium text-white mb-2">性能指标</h4>
-                    <div className="space-y-3">
-                      <div>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-400">准确率</span>
-                          <span className="digital-display">{selectedAlgorithm.accuracy}%</span>
+                  {rightPanelTab === 'code' && (
+                    <div className="h-full flex flex-col animate-in fade-in slide-in-from-right-4 duration-300">
+                      {/* Editor */}
+                      <div className="flex-1 bg-[#1e1e1e] rounded-t-lg border border-slate-700 overflow-hidden font-mono text-xs relative">
+                        <textarea
+                          value={selectedAlgorithm.code || ''}
+                          onChange={(e)=>setSelectedAlgorithm((prev:any)=>({ ...prev, code: e.target.value }))}
+                          className="w-full h-full bg-transparent text-gray-300 p-3 outline-none resize-none"
+                        />
+                      </div>
+                      
+                      {/* Test Configuration */}
+                      <div className="py-2 px-1 flex gap-4 border-t border-slate-700/50 bg-[#1e1e1e]">
+                        <div className="flex-1">
+                           <label className="text-xs text-gray-500 block mb-1">Batch Size</label>
+                           <input 
+                              type="number" 
+                              value={testParams.batchSize}
+                              onChange={(e) => setTestParams(prev => ({...prev, batchSize: parseInt(e.target.value) || 0}))}
+                              className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-cyber-cyan outline-none font-mono"
+                           />
                         </div>
-                        <div className="w-full bg-slate-700 rounded-full h-2">
-                          <div 
-                            className="bg-gradient-to-r from-cyber-cyan to-neon-blue h-2 rounded-full"
-                            style={{ width: `${selectedAlgorithm.accuracy}%` }}
-                          ></div>
+                        <div className="flex-1">
+                           <label className="text-xs text-gray-500 block mb-1">Epochs</label>
+                           <input 
+                              type="number" 
+                              value={testParams.epochs}
+                              onChange={(e) => setTestParams(prev => ({...prev, epochs: parseInt(e.target.value) || 0}))}
+                              className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-cyber-cyan outline-none font-mono"
+                           />
                         </div>
                       </div>
-                      <div>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-400">性能</span>
-                          <span className="digital-display">{selectedAlgorithm.performance}%</span>
+                      
+                      {/* Terminal (Conditional) */}
+                      {(isTestRunning || terminalLogs.length > 0) && (
+                        <div className="h-32 bg-black border-x border-b border-slate-700 rounded-b-lg p-3 font-mono text-xs overflow-y-auto">
+                          <div className="flex items-center gap-2 text-gray-500 mb-2 border-b border-gray-800 pb-1">
+                            <Terminal size={12} />
+                            <span>Terminal</span>
+                          </div>
+                          {terminalLogs.map((log, i) => (
+                            <div key={i} className="text-emerald-500/90 mb-1 last:animate-pulse">
+                              {log}
+                            </div>
+                          ))}
                         </div>
-                        <div className="w-full bg-slate-700 rounded-full h-2">
-                          <div 
-                            className="bg-gradient-to-r from-emerald-green to-cyber-cyan h-2 rounded-full"
-                            style={{ width: `${selectedAlgorithm.performance}%` }}
-                          ></div>
+                      )}
+                    </div>
+                  )}
+
+                  {rightPanelTab === 'logs' && (
+                    <div className="space-y-2 font-mono text-xs animate-in fade-in slide-in-from-right-4 duration-300">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className="p-3 bg-slate-800/30 rounded border border-slate-700/50 flex justify-between items-center hover:bg-slate-800/50 transition-colors">
+                          <div className="space-y-1">
+                            <div className="text-gray-400">2025-11-27 10:23:{10 + i}</div>
+                            <div className="text-white">Input: Batch_#{2094 + i}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-emerald-400">Success</div>
+                            <div className="text-gray-500">{120 + i * 5}ms</div>
+                          </div>
                         </div>
-                      </div>
+                      ))}
                     </div>
-                  </div>
+                  )}
+                </div>
 
-                  <div className="p-3 bg-slate-800/50 rounded-lg">
-                    <h4 className="text-sm font-medium text-white mb-2">使用统计</h4>
-                    <div className="text-center">
-                      <p className="digital-display text-2xl font-bold">{selectedAlgorithm.usage}</p>
-                      <p className="text-xs text-gray-400">总调用次数</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <GlowButton size="sm" className="w-full">
-                      <Play size={14} className="mr-2" />
-                      运行测试
-                    </GlowButton>
-                    <GlowButton size="sm" variant="secondary" className="w-full">
+                {/* Footer Buttons */}
+                <div className="mt-4 pt-4 border-t border-slate-700 grid grid-cols-2 gap-3">
+                  <GlowButton 
+                    size="sm" 
+                    className="w-full justify-center"
+                    onClick={handleRunTest}
+                    disabled={isTestRunning}
+                  >
+                    {isTestRunning ? (
+                      <>
+                        <RefreshCw size={14} className="mr-2 animate-spin" />
+                        计算中...
+                      </>
+                    ) : (
+                      <>
+                        <Play size={14} className="mr-2" />
+                        运行测试
+                      </>
+                    )}
+                  </GlowButton>
+                  
+                  <div className="group relative">
+                    <GlowButton size="sm" variant="secondary" className="w-full justify-center">
                       <Download size={14} className="mr-2" />
                       下载模型
                     </GlowButton>
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-black/90 text-white text-xs rounded border border-slate-700 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                      文件大小: 45MB, 格式: ONNX
+                    </div>
                   </div>
+                </div>
+                <div className="mt-2 flex justify-end">
+                  <GlowButton size="sm" variant="secondary" onClick={async ()=>{ if (selectedAlgorithm?.id) { await updateAlgorithmCode(selectedAlgorithm.id, selectedAlgorithm.code || ''); } }}>
+                    <FileCode size={14} className="mr-2" />保存
+                  </GlowButton>
                 </div>
               </HudPanel>
             </div>
@@ -504,7 +839,7 @@ export const Capabilities: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <DataCard
               title="总模型数"
-              value={businessModels.length}
+              value={(models.length || businessModels.length)}
               unit="个"
               status="active"
             >
@@ -513,38 +848,38 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="服务企业"
-              value={businessModels.reduce((sum, m) => sum + m.enterprises, 0)}
+              value={(models.length ? models : businessModels).reduce((sum: number, m: any) => sum + m.enterprises, 0)}
               unit="家"
               status="active"
             >
-              <Target className="text-emerald-green mt-2" size={20} />
+              <TrendingUp className="text-emerald-green mt-2" size={20} />
             </DataCard>
 
             <DataCard
-              title="处理订单"
-              value={businessModels.reduce((sum, m) => sum + m.orders, 0)}
+              title="累计订单"
+              value={(models.length ? models : businessModels).reduce((sum: number, m: any) => sum + m.orders, 0)}
               unit="单"
               status="active"
             >
-              <TrendingUp className="text-neon-blue mt-2" size={20} />
+              <FileText className="text-neon-blue mt-2" size={20} />
             </DataCard>
 
             <DataCard
               title="平均成功率"
-              value={(businessModels.reduce((sum, m) => sum + m.successRate, 0) / businessModels.length).toFixed(1)}
+              value={(models.length ? (models.reduce((sum: number, m: any) => sum + m.successRate, 0) / models.length) : (businessModels.reduce((sum, m) => sum + m.successRate, 0) / businessModels.length)).toFixed(1)}
               unit="%"
               status="active"
             >
-              <Zap className="text-yellow-400 mt-2" size={20} />
+              <Target className="text-yellow-400 mt-2" size={20} />
             </DataCard>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* 业务模型列表 */}
             <div className="lg:col-span-2">
-              <HudPanel title="业务模型库" subtitle="品类特定业务逻辑模型">
+              <HudPanel title="业务模型库" subtitle="各品类业务逻辑模型">
                 <div className="space-y-3">
-                  {businessModels.map((model) => (
+                  {(models.length ? models : businessModels).map((model: any) => (
                     <div
                       key={model.id}
                       className={`p-4 rounded-lg border cursor-pointer transition-all duration-200 ${
@@ -556,21 +891,18 @@ export const Capabilities: React.FC = () => {
                     >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 bg-gradient-to-r from-cyber-cyan to-neon-blue rounded-lg flex items-center justify-center">
-                            <Database size={16} className="text-deep-space" />
+                          <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                            <Database size={16} className="text-blue-500" />
                           </div>
                           <div>
                             <h3 className="font-semibold text-white">{model.name}</h3>
                             <p className="text-xs text-gray-400">{model.description}</p>
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <StatusBadge status="active">运行中</StatusBadge>
-                          <span className="text-xs text-gray-500">{model.version}</span>
-                        </div>
+                        <StatusBadge status="active">{model.status}</StatusBadge>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="grid grid-cols-3 gap-4 text-sm mb-3">
                         <div>
                           <span className="text-gray-400">服务企业</span>
                           <p className="digital-display font-bold">{model.enterprises}</p>
@@ -585,25 +917,12 @@ export const Capabilities: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700">
-                        <div className="flex flex-wrap gap-1">
-                          {model.scenarios.map((scenario, index) => (
-                            <span key={index} className="px-2 py-1 bg-slate-700 text-xs rounded">
-                              {scenario}
-                            </span>
-                          ))}
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <button className="p-1 text-gray-400 hover:text-cyber-cyan">
-                            <Eye size={14} />
-                          </button>
-                          <button className="p-1 text-gray-400 hover:text-emerald-green">
-                            <Play size={14} />
-                          </button>
-                          <button className="p-1 text-gray-400 hover:text-yellow-400">
-                            <Edit size={14} />
-                          </button>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        {model.scenarios.map((tag: string, i: number) => (
+                          <span key={i} className="px-2 py-1 bg-slate-700 text-xs rounded text-gray-300">
+                            {tag}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -611,97 +930,66 @@ export const Capabilities: React.FC = () => {
               </HudPanel>
             </div>
 
-            {/* 模型详情 */}
+            {/* 业务模型详情 */}
             <div>
-              <HudPanel title="模型详情" subtitle={selectedModel.name}>
-                <div className="space-y-4">
-                  <div className="p-3 bg-slate-800/50 rounded-lg">
-                    <h4 className="text-sm font-medium text-white mb-2">基本信息</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">版本</span>
-                        <span className="text-cyber-cyan">{selectedModel.version}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">状态</span>
-                        <StatusBadge status="active">运行中</StatusBadge>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">维护者</span>
-                        <span className="text-white">{selectedModel.maintainer}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">更新时间</span>
-                        <span className="text-white">{selectedModel.lastUpdated}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-slate-800/50 rounded-lg">
-                    <h4 className="text-sm font-medium text-white mb-2">业务统计</h4>
-                    <div className="space-y-3">
-                      <div className="text-center">
-                        <p className="digital-display text-2xl font-bold">{selectedModel.enterprises}</p>
-                        <p className="text-xs text-gray-400">服务企业数</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="digital-display text-2xl font-bold">{selectedModel.orders}</p>
-                        <p className="text-xs text-gray-400">处理订单数</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="digital-display text-2xl font-bold">{selectedModel.successRate}%</p>
-                        <p className="text-xs text-gray-400">成功率</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-slate-800/50 rounded-lg">
-                    <h4 className="text-sm font-medium text-white mb-2">合规要求</h4>
-                    <div className="flex flex-wrap gap-1">
-                      {selectedModel.compliance.map((item, index) => (
-                        <span key={index} className="px-2 py-1 bg-slate-700 text-xs rounded">
-                          {item}
+              <HudPanel className="h-full flex flex-col">
+                <div className="mb-4 pb-4 border-b border-slate-700">
+                  <h3 className="hud-title mb-1">{selectedModel.name}</h3>
+                  <StatusBadge status="active">{selectedModel.status}</StatusBadge>
+                </div>
+                
+                <div className="space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-400 mb-2">应用场景</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedModel.scenarios.map((tag: string, i: number) => (
+                        <span key={i} className="px-2 py-1 bg-slate-700/50 text-xs rounded text-cyber-cyan border border-slate-600">
+                          {tag}
                         </span>
                       ))}
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <GlowButton size="sm" className="w-full">
-                      <Play size={14} className="mr-2" />
-                      运行测试
-                    </GlowButton>
-                    <GlowButton size="sm" variant="secondary" className="w-full">
-                      <RefreshCw size={14} className="mr-2" />
-                      更新模型
-                    </GlowButton>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-400 mb-2">合规要求</h4>
+                    <div className="space-y-2">
+                      {selectedModel.compliance.map((item: string, i: number) => (
+                        <div key={i} className="flex items-center text-sm text-gray-300">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2" />
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                    <h4 className="text-sm font-medium text-gray-400 mb-3">关键指标</h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">服务企业</span>
+                        <span className="text-white font-mono">{selectedModel.enterprises}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">累计订单</span>
+                        <span className="text-white font-mono">{selectedModel.orders}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">成功率</span>
+                        <span className="text-emerald-400 font-mono">{selectedModel.successRate}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="pt-4 border-t border-slate-700">
+                     <button className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm transition-colors flex items-center justify-center gap-2">
+                        <FileText size={14} />
+                        查看完整模型文档
+                     </button>
                   </div>
                 </div>
               </HudPanel>
             </div>
           </div>
-
-          {/* 模型使用趋势 */}
-          <HudPanel title="模型使用趋势" subtitle="各品类模型月度使用情况">
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={modelUsageStats}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
-                  <XAxis 
-                    dataKey="month" 
-                    stroke="#64748b" 
-                    fontSize={12}
-                    tickFormatter={(value) => value.split('-')[1] + '月'}
-                  />
-                  <YAxis stroke="#64748b" fontSize={12} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="beauty" fill="#00F0FF" name="美妆" />
-                  <Bar dataKey="wine" fill="#2E5CFF" name="酒水" />
-                  <Bar dataKey="appliance" fill="#10B981" name="家电" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </HudPanel>
         </>
       )}
     </div>

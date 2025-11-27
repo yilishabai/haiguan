@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
+import { getSettings } from '../lib/sqlite';
 
 interface Application {
   id: string;
@@ -78,6 +79,8 @@ export const Acceptance: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [appPage, setAppPage] = useState(1);
+  const [appPageSize, setAppPageSize] = useState(10);
 
   // 模拟数据
   useEffect(() => {
@@ -258,14 +261,30 @@ export const Acceptance: React.FC = () => {
     setReviewWorkflows(generateReviewWorkflows());
     setEnterpriseMetrics(generateEnterpriseMetrics());
 
-    const interval = setInterval(() => {
-      setApplications(generateApplications());
-      setAcceptanceCriteria(generateAcceptanceCriteria());
-      setReviewWorkflows(generateReviewWorkflows());
-      setEnterpriseMetrics(generateEnterpriseMetrics());
-    }, 3000);
+    let timer: any;
+    const setup = async () => {
+      try {
+        const rows = await getSettings();
+        const val = rows.find((r: any) => r.key === 'sync_interval')?.value || '3000';
+        const delay = Math.max(500, parseInt(val) || 3000);
+        timer = setInterval(() => {
+          setApplications(generateApplications());
+          setAcceptanceCriteria(generateAcceptanceCriteria());
+          setReviewWorkflows(generateReviewWorkflows());
+          setEnterpriseMetrics(generateEnterpriseMetrics());
+        }, delay);
+      } catch (_) {
+        timer = setInterval(() => {
+          setApplications(generateApplications());
+          setAcceptanceCriteria(generateAcceptanceCriteria());
+          setReviewWorkflows(generateReviewWorkflows());
+          setEnterpriseMetrics(generateEnterpriseMetrics());
+        }, 3000);
+      }
+    };
+    setup();
 
-    return () => clearInterval(interval);
+    return () => { if (timer) clearInterval(timer); };
   }, []);
 
   const getStatusIcon = (status: string) => {
@@ -317,6 +336,10 @@ export const Acceptance: React.FC = () => {
     const matchesStatus = filterStatus === 'all' || app.status === filterStatus;
     return matchesSearch && matchesCategory && matchesStatus;
   });
+  const totalAppPages = Math.max(1, Math.ceil(filteredApplications.length / appPageSize));
+  const currentAppPage = Math.min(appPage, totalAppPages);
+  const appStart = (currentAppPage - 1) * appPageSize;
+  const pagedApplications = filteredApplications.slice(appStart, appStart + appPageSize);
 
   // 统计数据
   const statsData = [
@@ -496,7 +519,7 @@ export const Acceptance: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredApplications.map((app) => (
+                    {pagedApplications.map((app) => (
                       <tr key={app.id} className="border-b border-gray-800 hover:bg-gray-800">
                         <td className="py-3 px-4 text-cyber-cyan font-medium">{app.applicationNo}</td>
                         <td className="py-3 px-4 text-white">{app.enterprise}</td>
@@ -552,6 +575,20 @@ export const Acceptance: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <span>每页</span>
+                    <select value={appPageSize} onChange={(e)=>{ setAppPageSize(parseInt(e.target.value)||10); setAppPage(1); }} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white">
+                      {[10,20,50].map(s=> (<option key={s} value={s}>{s}</option>))}
+                    </select>
+                    <span>项</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button className="px-2 py-1 rounded bg-gray-800 text-gray-200 border border-gray-700 disabled:opacity-50" onClick={()=>setAppPage(p=>Math.max(1,p-1))} disabled={currentAppPage<=1}>上一页</button>
+                    <span className="text-xs text-gray-400">{currentAppPage}/{totalAppPages}</span>
+                    <button className="px-2 py-1 rounded bg-gray-800 text-gray-200 border border-gray-700 disabled:opacity-50" onClick={()=>setAppPage(p=>Math.min(totalAppPages,p+1))} disabled={currentAppPage>=totalAppPages}>下一页</button>
+                  </div>
+                </div>
               </div>
             </HudPanel>
           </div>

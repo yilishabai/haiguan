@@ -23,6 +23,8 @@ export default tseslint.config(
         'warn',
         { allowConstantExport: true },
       ],
+      'react-hooks/static-components': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 )

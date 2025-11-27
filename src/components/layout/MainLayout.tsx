@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -12,6 +12,7 @@ import {
   Bell
 } from 'lucide-react';
 import { StatusBadge } from '../ui/HudPanel';
+import { getSettings } from '../../lib/sqlite';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -61,6 +62,18 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     responseTime: 1.2,
     successRate: 99.8
   };
+
+  useEffect(() => {
+    const apply = async () => {
+      try {
+        const rows = await getSettings();
+        const theme = rows.find((r: any) => r.key === 'theme')?.value || 'dark';
+        document.documentElement.classList.remove('light', 'dark');
+        document.documentElement.classList.add(theme);
+      } catch (_) {}
+    };
+    apply();
+  }, []);
 
   return (
     <div className="min-h-screen bg-deep-space text-white">

@@ -1,11 +1,10 @@
 import React, { useEffect, useRef } from 'react'
 import * as echarts from 'echarts'
+import { getSettings } from '../../lib/sqlite'
 
 interface LogisticsMapProps {
   height?: number | string
 }
-
-const WORLD_MAP_URL = 'https://fastly.jsdelivr.net/npm/echarts@5/map/json/world.json'
 
 export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400 }) => {
   const ref = useRef<HTMLDivElement | null>(null)
@@ -21,14 +20,31 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400 }) => {
       chartRef.current = chart
 
       try {
-        const resp = await fetch(WORLD_MAP_URL)
-        if (resp.ok) {
-          const world = await resp.json()
-          echarts.registerMap('world', world)
+        const providers: Record<string, string> = {
+          jsdelivr: 'https://fastly.jsdelivr.net/npm/echarts@5/map/json/world.json',
+          unpkg: 'https://unpkg.com/echarts@5/map/json/world.json',
+          cdnjs: 'https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/map/json/world.json'
         }
-      } catch (e) {
-        // ignore map load errors
-      }
+        let urls = [providers.jsdelivr, providers.unpkg, providers.cdnjs]
+        try {
+          const rows = await getSettings()
+          const p = rows.find((r: any) => r.key === 'map_provider')?.value || 'jsdelivr'
+          const primary = providers[p] || providers.jsdelivr
+          urls = [primary, ...Object.values(providers).filter(u => u !== primary)]
+        } catch (_) {}
+        let ok = false
+        for (const url of urls) {
+          try {
+            const resp = await fetch(url)
+            if (resp.ok) {
+              const world = await resp.json()
+              echarts.registerMap('world', world)
+              ok = true
+              break
+            }
+          } catch (_) {}
+        }
+      } catch (e) {}
 
       const china = { name: 'China', coord: [116.4074, 39.9042] }
       const shanghai = { name: 'Shanghai Port', coord: [121.4917, 31.2333] }
