@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { CreditCard, Truck } from 'lucide-react'
 import { HudPanel, StatusBadge, GlowButton } from '../components/ui/HudPanel'
-import { queryAll, getPaymentMethods, completeSettlement, getAlgorithmRecommendations, getHsChapters } from '../lib/sqlite'
+import { queryAll, getPaymentMethods, completeSettlement, getAlgorithmRecommendations, getHsChapters, getIncotermsList, getTransportModes } from '../lib/sqlite'
 
 export const CollaborationWorkbench: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<string | null>(null)
@@ -117,7 +117,7 @@ export const CollaborationWorkbench: React.FC = () => {
           </div>
           <div className="hud-panel p-3">
             <div className="text-xs text-gray-400">今日报关金额</div>
-            <div className="digital-display text-emerald-green text-xl">${metrics.customsAmount}k</div>
+            <div className="digital-display text-emerald-green text-xl">¥{metrics.customsAmount}k</div>
           </div>
           <div className="hud-panel p-3">
             <div className="text-xs text-gray-400">异常阻断</div>
@@ -264,13 +264,21 @@ export const CollaborationWorkbench: React.FC = () => {
                     <div className="text-sm text-gray-400 mb-1">物流</div>
                     <div className="text-white font-semibold">{tasks.find(t=>t.id===selectedTask)?.route || '—'}</div>
                     <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs border border-yellow-500/30 text-yellow-400">
-                      <Truck className="w-3 h-3 mr-1" /> {(tasks.find(t=>t.id===selectedTask)?.logisticsStatus)||'pickup'}
+                      <Truck className="w-3 h-3 mr-1" /> {(() => {
+                        const m: Record<string,string> = { pickup:'提货', transit:'在途', delivery:'派送', completed:'完成', customs:'报关' }
+                        const st = (tasks.find(t=>t.id===selectedTask)?.logisticsStatus) || 'pickup'
+                        return m[st] || st
+                      })()}
                     </div>
                     <div className="mt-2 text-xs text-gray-400">
                       ETA/ETD 以订单为准
                     </div>
                     {reco?.processControl && (
-                      <div className="mt-2 text-xs text-gray-400">下一步: {reco.processControl.nextLogisticsStep}</div>
+                      <div className="mt-2 text-xs text-gray-400">下一步: {(() => {
+                        const m: Record<string,string> = { pickup:'提货', transit:'在途', delivery:'派送', completed:'完成', customs:'报关' }
+                        const next = reco.processControl.nextLogisticsStep || ''
+                        return m[next] || next
+                      })()}</div>
                     )}
                   </div>
                 </div>

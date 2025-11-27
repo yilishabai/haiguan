@@ -443,6 +443,53 @@ function seed(db: Database) {
 
 function migrate(db: Database) {
   try {
+    db.run(`CREATE TABLE IF NOT EXISTS customs_headers (
+      id TEXT PRIMARY KEY,
+      declaration_no TEXT UNIQUE,
+      enterprise TEXT,
+      consignor TEXT,
+      consignee TEXT,
+      port_code TEXT,
+      trade_mode TEXT,
+      currency TEXT,
+      total_value REAL,
+      gross_weight REAL,
+      net_weight REAL,
+      packages INTEGER,
+      country_origin TEXT,
+      country_dest TEXT,
+      status TEXT,
+      declare_date TEXT,
+      order_id TEXT,
+      updated_at TEXT
+    )`)
+    db.run(`CREATE TABLE IF NOT EXISTS customs_items (
+      id TEXT PRIMARY KEY,
+      header_id TEXT,
+      line_no INTEGER,
+      hs_code TEXT,
+      name TEXT,
+      spec TEXT,
+      unit TEXT,
+      qty REAL,
+      unit_price REAL,
+      amount REAL,
+      origin_country TEXT,
+      tax_rate REAL,
+      tariff REAL,
+      excise REAL,
+      vat REAL
+    )`)
+    db.run(`CREATE TABLE IF NOT EXISTS trade_stream (
+      id TEXT PRIMARY KEY,
+      order_id TEXT,
+      from_city TEXT,
+      to_city TEXT,
+      amount REAL,
+      ts TEXT
+    )`)
+  } catch (e) {}
+  try {
     const info = db.exec(`PRAGMA table_info(logistics)`)
     const cols = (info[0]?.values || []).map((row:any[]) => row[1])
     if (!cols.includes('order_id')) {
@@ -541,6 +588,14 @@ function migrate(db: Database) {
         { b:'JPY', q:'CNY', r:0.05 }
       ].forEach(x=> db.run(`INSERT INTO exchange_rates(base,quote,rate,updated_at) VALUES($b,$q,$r,$t)`,{ $b:x.b,$q:x.q,$r:x.r,$t:new Date().toISOString() }))
     }
+  } catch (e) {}
+
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS ports_congestion (
+      port TEXT PRIMARY KEY,
+      idx REAL,
+      updated_at TEXT
+    )`)
   } catch (e) {}
 
   try {

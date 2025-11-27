@@ -37,7 +37,11 @@ export const Dashboard: React.FC = () => {
       const f = await getProcessFunnel();
       setMetrics(s);
       setEnterpriseSeries(e);
-      setCategories(c.map(x=>({ name: x.name === 'beauty' ? '美妆' : x.name === 'wine' ? '酒水' : x.name === 'appliance' ? '家电' : x.name, value: x.value, color: x.color })));
+      setCategories(c.map(x=>({
+        name: x.name === 'beauty' ? '美妆' : x.name === 'wine' ? '酒水' : x.name === 'appliance' ? '家电' : x.name === 'electronics' ? '电子' : x.name === 'textile' ? '纺织' : x.name,
+        value: x.value,
+        color: x.color
+      })));
       setFunnel(f);
       setLastUpdate(new Date());
       const batch = await getTradeStreamBatch(0, 6000);
@@ -46,7 +50,7 @@ export const Dashboard: React.FC = () => {
         '纽约':[-74.006,40.7128], '洛杉矶':[-118.2437,34.0522], '伦敦':[-0.1276,51.5074], '鹿特丹':[4.4777,51.9244], '汉堡':[9.9937,53.5511], '巴黎':[2.3522,48.8566], '马德里':[-3.7038,40.4168],
         '东京':[139.6917,35.6895], '大阪':[135.5022,34.6937], '新加坡':[103.8198,1.3521], '吉隆坡':[101.6869,3.139], '曼谷':[100.5018,13.7563]
       }[city] || [116.4074,39.9042]);
-      setFlows(batch.map((b:any)=>({ from: geo(b.fromCity), to: geo(b.toCity), tooltip: `${b.fromCity} → ${b.toCity} $${b.amount}` })));
+      setFlows(batch.map((b:any)=>({ from: geo(b.fromCity), to: geo(b.toCity), tooltip: `${b.fromCity} → ${b.toCity} ¥${b.amount}` })));
       setGmvToday(await getTodayGMV());
       setPorts((await getPortsCongestion()).map((p:any)=>({ port:p.port, index:p.congestionIndex })));
       setSyncDelay(await consistencyCheck());

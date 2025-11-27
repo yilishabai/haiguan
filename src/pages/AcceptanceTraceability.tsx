@@ -71,7 +71,7 @@ const ProductPassport = ({ order }: { order?: { id?: string; order_number?: stri
     void load();
   }, [order?.id, order?.category]);
   return (
-  <HudPanel className="h-full flex flex-col" title="Product Passport" subtitle="商品数字护照">
+  <HudPanel className="h-full flex flex-col" title="商品数字护照" subtitle="Product Passport">
     <div className="flex-1 flex flex-col items-center p-6 space-y-6">
       {/* Product Image Placeholder */}
       <div className="relative w-48 h-48 group">
@@ -85,31 +85,31 @@ const ProductPassport = ({ order }: { order?: { id?: string; order_number?: stri
         </div>
         <div className="absolute -top-2 -right-2 bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 text-xs px-2 py-0.5 rounded-full backdrop-blur-md flex items-center gap-1">
           <CheckCircle size={10} />
-          <span>Authentic</span>
+          <span>正品认证</span>
         </div>
       </div>
 
       {/* Details List */}
       <div className="w-full space-y-4 font-mono text-sm">
         <div className="group p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/30 transition-colors">
-          <div className="text-gray-500 text-xs mb-1">SKU Coding</div>
+          <div className="text-gray-500 text-xs mb-1">SKU编码</div>
           <div className="text-amber-100 font-semibold tracking-wider">{order?.order_number || 'SKU'}</div>
         </div>
 
         <div className="group p-3 rounded-lg bg-white/5 border border-white/10 hover:border-blue-500/30 transition-colors">
-          <div className="text-gray-500 text-xs mb-1">Origin</div>
+          <div className="text-gray-500 text-xs mb-1">原产地</div>
           <div className="text-blue-100 flex items-center gap-2">
             <MapPin size={14} className="text-blue-400" />
-            {order?.category === 'beauty' ? 'France (Bordeaux)' : 'China'}
+            {order?.category === 'beauty' ? '法国（波尔多）' : '中国'}
           </div>
         </div>
 
         <div className="group p-3 rounded-lg bg-white/5 border border-white/10 hover:border-emerald-500/30 transition-colors">
-          <div className="text-gray-500 text-xs mb-1">HS Code</div>
+          <div className="text-gray-500 text-xs mb-1">HS编码</div>
           <div className="flex justify-between items-center">
             <span className="text-emerald-100">{hs?.hsCode || '—'}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Auto Match</span>
-          </div>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">自动匹配</span>
+        </div>
         </div>
 
         <div className="group p-3 rounded-lg bg-white/5 border border-white/10">
@@ -135,7 +135,7 @@ const ProductPassport = ({ order }: { order?: { id?: string; order_number?: stri
         )}
 
         <div className="group p-3 rounded-lg bg-white/5 border border-white/10 hover:border-purple-500/30 transition-colors">
-          <div className="text-gray-500 text-xs mb-1">Registration Status</div>
+          <div className="text-gray-500 text-xs mb-1">监管备案状态</div>
           <div className="flex items-center gap-2 text-purple-200">
             <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></div>
             {order ? (order.category==='beauty'?'NMPA Filed':'CFDA/CIQ') : 'NMPA Filed'}
@@ -230,12 +230,12 @@ const TraceabilityTimeline = ({ orderId }: { orderId?: string }) => {
       const fmt = (d: Date) => `${d.toISOString().slice(0,10)} | ${d.toTimeString().slice(0,5)}`;
       const e1: TimelineEvent = {
         id: '1', date: created.toISOString().slice(0,10), time: created.toTimeString().slice(0,5),
-        title: 'Warehouse Outbound', location: l?.origin || '—', icon: Box, status: 'completed',
+        title: '仓库出库', location: l?.origin || '—', icon: Box, status: 'completed',
         details: (
           <div className="flex items-center gap-3 group cursor-pointer">
             <div className="p-2 rounded bg-blue-500/10 text-blue-400 group-hover:text-blue-300 transition-colors"><FileCheck size={16} /></div>
             <div>
-              <div className="text-xs text-gray-400">Attached Document</div>
+              <div className="text-xs text-gray-400">关联单证</div>
               <div className="text-sm text-blue-200 underline decoration-blue-500/30 underline-offset-2">Origin_Certificate.pdf</div>
             </div>
           </div>
@@ -244,12 +244,12 @@ const TraceabilityTimeline = ({ orderId }: { orderId?: string }) => {
       const transportStart = new Date(created.getTime() + 3600*1000);
       const e2: TimelineEvent = {
         id: '2', date: transportStart.toISOString().slice(0,10), time: transportStart.toTimeString().slice(0,5),
-        title: 'Intl. Transport', location: `${l?.origin || '—'} → ${l?.destination || '—'}`, icon: Plane,
+        title: '国际运输', location: `${l?.origin || '—'} → ${l?.destination || '—'}`, icon: Plane,
         status: (l?.status && ['transit','delivery','customs','completed'].includes(l.status)) ? 'completed' : 'current',
         details: (
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs">
-              <span className="text-gray-400 flex items-center gap-1"><Thermometer size={12} /> Avg Temp</span>
+              <span className="text-gray-400 flex items-center gap-1"><Thermometer size={12} /> 平均温度</span>
               <span className="text-emerald-400 font-mono">22°C</span>
             </div>
             <div className="h-12 w-full bg-emerald-900/10 rounded border border-emerald-500/20 overflow-hidden relative">
@@ -266,11 +266,11 @@ const TraceabilityTimeline = ({ orderId }: { orderId?: string }) => {
       const customsTime = new Date(created.getTime() + (c?.clearance_time ? c.clearance_time*3600*1000 : 2*3600*1000));
       const e3: TimelineEvent = {
         id: '3', date: customsTime.toISOString().slice(0,10), time: customsTime.toTimeString().slice(0,5),
-        title: 'Customs Declaration', location: 'China', icon: ShieldCheck,
+        title: '海关申报', location: '中国', icon: ShieldCheck,
         status: c?.status==='cleared'?'completed':c?.status==='held'?'pending':'current',
         details: (
           <div className="bg-gradient-to-r from-amber-500/10 to-transparent p-3 rounded border-l-2 border-amber-500 flex items-center justify-between">
-            <div className="flex items-center gap-2"><Zap size={16} className="text-amber-400 fill-amber-400" /><span className="text-amber-100 text-sm font-medium">{c?.status==='cleared'?'Lightning Release':'Declaration In Progress'}</span></div>
+            <div className="flex items-center gap-2"><Zap size={16} className="text-amber-400 fill-amber-400" /><span className="text-amber-100 text-sm font-medium">{c?.status==='cleared'?'极速放行':'申报进行中'}</span></div>
             <div className="text-xs font-mono text-amber-200/70">{fmt(customsTime)}</div>
           </div>
         )
@@ -278,9 +278,9 @@ const TraceabilityTimeline = ({ orderId }: { orderId?: string }) => {
       const warehouseTime = new Date(customsTime.getTime() + (l?.actual_time ? l.actual_time*3600*1000/24 : 2*3600*1000));
       const e4: TimelineEvent = {
         id: '4', date: warehouseTime.toISOString().slice(0,10), time: warehouseTime.toTimeString().slice(0,5),
-        title: 'Bonded Warehouse', location: 'Hangzhou', icon: Package,
+        title: '保税仓库', location: '杭州', icon: Package,
         status: l?.status==='completed'?'completed':'pending',
-        details: (<div className="flex items-center gap-2 text-sm text-emerald-300"><CheckCircle size={14} /> Inventory Synced</div>)
+        details: (<div className="flex items-center gap-2 text-sm text-emerald-300"><CheckCircle size={14} /> 库存已同步</div>)
       };
       setEvents([e1,e2,e3,e4]);
     };
@@ -288,7 +288,7 @@ const TraceabilityTimeline = ({ orderId }: { orderId?: string }) => {
   }, [orderId]);
 
   return (
-    <HudPanel className="h-full overflow-hidden flex flex-col" title="Traceability Timeline" subtitle="全链路时空轨迹">
+    <HudPanel className="h-full overflow-hidden flex flex-col" title="全链路时空轨迹" subtitle="Traceability Timeline">
       <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
         <div className="max-w-md mx-auto">
           {events.map((event, index) => (
@@ -312,7 +312,7 @@ const AuditLog = () => {
   }, []);
 
   return (
-    <HudPanel className="h-full flex flex-col" title="Audit Log" subtitle="智能验算日志">
+    <HudPanel className="h-full flex flex-col" title="智能验算日志" subtitle="Audit Log">
       <div className="p-2 flex items-center justify-end">
         <GlowButton size="sm" loading={scanning} onClick={async ()=>{ setScanning(true); try { await runDataQualityScan(); setLogs(await fetchAuditLogs()); } finally { setScanning(false); } }}>数据质量探查</GlowButton>
       </div>
@@ -461,7 +461,7 @@ export const AcceptanceTraceability: React.FC = () => {
         {/* Right: 25% */}
         <div className="lg:col-span-1 h-full">
           {selected ? <AuditLog /> : (
-            <HudPanel className="h-full flex items中心 justify-center" title="提示">
+            <HudPanel className="h-full flex items-center justify-center" title="提示">
               <div className="text-gray-400">选中商品后显示日志</div>
             </HudPanel>
           )}

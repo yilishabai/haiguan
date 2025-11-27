@@ -106,8 +106,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 <span className="text-deep-space font-bold text-sm">SC</span>
               </div>
               <div>
-                <h1 className="text-lg font-bold text-cyber-cyan">跨境供应链协同平台</h1>
-                <p className="text-xs text-gray-400">Cross-Border Supply Chain Collaboration</p>
+                <h1 className="text-lg font-bold text-cyber-cyan">政企数据融合的跨链智能政务平台</h1>
+                <p className="text-xs text-gray-400">Cross-Chain Gov-Enterprise Data Fusion Platform</p>
               </div>
             </div>
           </div>

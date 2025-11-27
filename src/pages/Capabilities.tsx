@@ -24,7 +24,7 @@ import {
   X,
   FileCode
 } from 'lucide-react';
-import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel } from '../lib/sqlite';
+import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll } from '../lib/sqlite';
 
 // 算法库数据
 const algorithmLibrary = [
@@ -338,8 +338,14 @@ export const Capabilities: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState<any | null>(null);
   const [algPage, setAlgPage] = useState(1);
   const [algPageSize, setAlgPageSize] = useState(5);
+  const [algKeyword, setAlgKeyword] = useState('');
+  const [modelKeyword, setModelKeyword] = useState('');
   const [showModelModal, setShowModelModal] = useState(false);
-  const [modelForm, setModelForm] = useState<any>({ id:'', name:'', category:'beauty', version:'v1.0.0', status:'active', enterprises:0, orders:0, description:'', scenarios:'', compliance:'', successRate:90, lastUpdated:new Date().toISOString().slice(0,10), maintainer:'' });
+  const [modelForm, setModelForm] = useState<any>({ id:'', name:'', category:'beauty', version:'v1.0.0', status:'active', enterprises:0, orders:0, description:'', scenarios:'', compliance:'', chapters:'', successRate:90, lastUpdated:new Date().toISOString().slice(0,10), maintainer:'' });
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderList, setOrderList] = useState<any[]>([]);
+  const [reco, setReco] = useState<any | null>(null);
+  const [applyResult, setApplyResult] = useState<{ score: number; messages: string[] } | null>(null);
   
   // Right Panel State
   const [rightPanelTab, setRightPanelTab] = useState<'overview' | 'code' | 'logs'>('overview');
@@ -362,18 +368,20 @@ export const Capabilities: React.FC = () => {
       const a = await getAlgorithms();
       const m = await getBusinessModels();
       const aa = a.map((x: any) => ({ ...x, features: JSON.parse(x.features) }));
-      const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance) }));
+      const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance), chapters: x.chapters ? JSON.parse(x.chapters) : [] }));
       setAlgorithms(aa);
       setModels(mm);
       setSelectedAlgorithm(aa[0] || null);
       setSelectedModel(mm[0] || null);
       setAlgPage(1);
+      const os = await queryAll(`SELECT id, order_number as orderNo, enterprise, created_at as createdAt FROM orders ORDER BY created_at DESC LIMIT 10`)
+      setOrderList(os)
     };
     load();
   }, []);
 
   const openNewModel = () => {
-    setModelForm({ id:'bm-'+Date.now(), name:'', category:'beauty', version:'v1.0.0', status:'active', enterprises:0, orders:0, description:'', scenarios:'', compliance:'', successRate:90, lastUpdated:new Date().toISOString().slice(0,10), maintainer:'' })
+    setModelForm({ id:'bm-'+Date.now(), name:'', category:'beauty', version:'v1.0.0', status:'active', enterprises:0, orders:0, description:'', scenarios:'', compliance:'', chapters:'', successRate:90, lastUpdated:new Date().toISOString().slice(0,10), maintainer:'' })
     setShowModelModal(true)
   }
   const openEditModel = () => {
@@ -389,6 +397,7 @@ export const Capabilities: React.FC = () => {
       description:selectedModel.description,
       scenarios:(selectedModel.scenarios||[]).join(','),
       compliance:(selectedModel.compliance||[]).join(','),
+      chapters:(selectedModel.chapters||[]).join(','),
       successRate:selectedModel.successRate,
       lastUpdated:selectedModel.lastUpdated,
       maintainer:selectedModel.maintainer
@@ -407,13 +416,14 @@ export const Capabilities: React.FC = () => {
       description:modelForm.description||'',
       scenarios:(modelForm.scenarios||'').split(',').map((s:string)=>s.trim()).filter(Boolean),
       compliance:(modelForm.compliance||'').split(',').map((s:string)=>s.trim()).filter(Boolean),
+      chapters:(modelForm.chapters||'').split(',').map((s:string)=>s.trim()).filter(Boolean),
       successRate:parseFloat(modelForm.successRate||0),
       lastUpdated:modelForm.lastUpdated||new Date().toISOString().slice(0,10),
       maintainer:modelForm.maintainer||''
     }
     await upsertBusinessModel(payload as any)
     const m = await getBusinessModels();
-    const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance) }));
+    const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance), chapters: x.chapters ? JSON.parse(x.chapters) : [] }));
     setModels(mm)
     setSelectedModel(mm.find((x:any)=>x.id===payload.id) || mm[0] || null)
     setShowModelModal(false)
@@ -576,7 +586,7 @@ export const Capabilities: React.FC = () => {
               <HudPanel title="算法库管理" subtitle="核心算法列表与状态">
                 <div className="space-y-3">
                   {(() => {
-                    const list = algorithms;
+                    const list = algKeyword ? algorithms.filter((a:any)=> (a.name||'').toLowerCase().includes(algKeyword.toLowerCase()) || (a.description||'').toLowerCase().includes(algKeyword.toLowerCase()) || (a.category||'').toLowerCase().includes(algKeyword.toLowerCase())) : algorithms;
                     const totalPages = Math.max(1, Math.ceil(list.length / algPageSize));
                     const page = Math.min(algPage, totalPages);
                     const start = (page - 1) * algPageSize;
@@ -658,6 +668,8 @@ export const Capabilities: React.FC = () => {
                       {[5,10,15].map(s=> (<option key={s} value={s}>{s}</option>))}
                     </select>
                     <span>项</span>
+                    <span className="ml-4">检索</span>
+                    <input value={algKeyword} onChange={(e)=>{ setAlgKeyword(e.target.value); setAlgPage(1) }} placeholder="按名称/描述/分类" className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white" />
                   </div>
                   <div className="flex items-center gap-2">
                     <button className="px-2 py-1 rounded bg-gray-800 text-gray-200 border border-gray-700 disabled:opacity-50" onClick={()=>setAlgPage(p=>Math.max(1,p-1))}>上一页</button>
@@ -741,6 +753,31 @@ export const Capabilities: React.FC = () => {
                               <span className="text-gray-500 block mb-1">Usage</span>
                               <span className="text-white font-mono">{selectedAlgorithm ? selectedAlgorithm.usage.toLocaleString() : 0}</span>
                             </div>
+                         </div>
+                         <div className="mt-4 pt-3 border-t border-slate-700">
+                           <div className="text-sm text-gray-400 mb-2">订单推荐测试</div>
+                           <div className="grid grid-cols-2 gap-2">
+                             <input value={orderSearch} onChange={(e)=>setOrderSearch(e.target.value)} placeholder="搜索订单号/企业" className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white" />
+                             <GlowButton size="sm" onClick={async ()=>{ const os = await queryAll(`SELECT id, order_number as orderNo, enterprise, created_at as createdAt FROM orders WHERE order_number LIKE $q OR enterprise LIKE $q ORDER BY created_at DESC LIMIT 20`,{ $q: `%${orderSearch}%` }); setOrderList(os) }}>搜索</GlowButton>
+                           </div>
+                           <div className="mt-2 max-h-32 overflow-auto border border-slate-700 rounded">
+                             {(orderList||[]).map(o=> (
+                               <div key={o.id} className="flex items-center justify-between px-2 py-1 hover:bg-slate-800">
+                                 <span className="text-xs text-gray-300">{o.orderNo}</span>
+                                 <GlowButton size="xs" onClick={async ()=>{ const rs = await getAlgorithmRecommendations(String(o.id)); setReco(rs || []) }}>运行推荐</GlowButton>
+                               </div>
+                             ))}
+                           </div>
+                           {reco && (
+                             <div className="mt-2 p-2 bg-slate-900 border border-slate-700 rounded space-y-1">
+                               <div className="text-xs text-gray-400 mb-1">推荐结果</div>
+                               <div className="text-xs text-emerald-400">• 支付建议: {reco.payment?.bestMethod} / 成功率 {reco.payment?.successRate}% / 预计 {reco.payment?.etaHours}h</div>
+                               <div className="text-xs text-emerald-400">• 库存动作: {reco.inventory?.action} / 数量 {reco.inventory?.quantity}</div>
+                               <div className="text-xs text-emerald-400">• 产销提升: 计划增产 {reco.productionSales?.planIncrease}</div>
+                               <div className="text-xs text-emerald-400">• 流程控制: 报关 {reco.processControl?.customsStatus} / 下步 {reco.processControl?.nextLogisticsStep}</div>
+                               <div className="text-xs text-emerald-400">• 决策摘要: {reco.decision?.summary}</div>
+                             </div>
+                           )}
                          </div>
                       </div>
                     </div>
@@ -954,7 +991,11 @@ export const Capabilities: React.FC = () => {
                   <GlowButton size="sm" onClick={openNewModel}>新增模型</GlowButton>
                 </div>
                 <div className="space-y-3">
-                  {models.map((model: any) => (
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-xs text-gray-400">检索</div>
+                    <input value={modelKeyword} onChange={(e)=>setModelKeyword(e.target.value)} placeholder="按名称/描述/分类" className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white w-56" />
+                  </div>
+                  {(modelKeyword ? models.filter((m:any)=> (m.name||'').toLowerCase().includes(modelKeyword.toLowerCase()) || (m.description||'').toLowerCase().includes(modelKeyword.toLowerCase()) || (m.category||'').toLowerCase().includes(modelKeyword.toLowerCase())) : models).map((model: any) => (
                     <div
                       key={model.id}
                       className={`p-4 rounded-lg border cursor-pointer transition-all duration-200 ${
@@ -1037,6 +1078,13 @@ export const Capabilities: React.FC = () => {
                     </div>
                   </div>
 
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-400 mb-2">关联HS章节</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {(selectedModel?.chapters||[]).map((c:string,i:number)=>(<span key={i} className="px-2 py-1 bg-slate-700/50 text-xs rounded text-yellow-300 border border-slate-600">{c}</span>))}
+                    </div>
+                  </div>
+
                   <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
                     <h4 className="text-sm font-medium text-gray-400 mb-3">关键指标</h4>
                     <div className="space-y-3">
@@ -1053,6 +1101,28 @@ export const Capabilities: React.FC = () => {
                         <span className="text-emerald-400 font-mono">{selectedModel ? selectedModel.successRate : 0}%</span>
                       </div>
                     </div>
+                  </div>
+                  
+                  <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                    <h4 className="text-sm font-medium text-gray-400 mb-3">模型应用测试</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={orderSearch} onChange={(e)=>setOrderSearch(e.target.value)} placeholder="搜索订单号/企业" className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white" />
+                      <GlowButton size="sm" onClick={async ()=>{ const os = await queryAll(`SELECT id, order_number as orderNo, enterprise, created_at as createdAt FROM orders WHERE order_number LIKE $q OR enterprise LIKE $q ORDER BY created_at DESC LIMIT 20`,{ $q: `%${orderSearch}%` }); setOrderList(os) }}>搜索</GlowButton>
+                    </div>
+                    <div className="mt-2 max-h-32 overflow-auto border border-slate-700 rounded">
+                      {(orderList||[]).map(o=> (
+                        <div key={o.id} className="flex items-center justify-between px-2 py-1 hover:bg-slate-800">
+                          <span className="text-xs text-gray-300">{o.orderNo}</span>
+                          <GlowButton size="xs" onClick={async ()=>{ const res = await applyBusinessModel(String(o.id)); setApplyResult({ score: res.compliance, messages: res.messages||[] }) }}>应用检查</GlowButton>
+                        </div>
+                      ))}
+                    </div>
+                    {applyResult && (
+                      <div className="mt-2 p-2 bg-slate-900 border border-slate-700 rounded">
+                        <div className="text-xs text-gray-400 mb-1">合规分 {applyResult.score}</div>
+                        {applyResult.messages.slice(0,8).map((m,i)=>(<div key={i} className="text-xs text-amber-400">⚠️ {m}</div>))}
+                      </div>
+                    )}
                   </div>
                   
                   <div className="pt-4 border-t border-slate-700 flex items-center gap-2">
@@ -1090,6 +1160,7 @@ export const Capabilities: React.FC = () => {
                   <textarea value={modelForm.description} onChange={(e)=>setModelForm((f:any)=>({ ...f, description:e.target.value }))} placeholder="描述" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white col-span-2" />
                   <input value={modelForm.scenarios} onChange={(e)=>setModelForm((f:any)=>({ ...f, scenarios:e.target.value }))} placeholder="适用场景(逗号分隔)" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white col-span-2" />
                   <input value={modelForm.compliance} onChange={(e)=>setModelForm((f:any)=>({ ...f, compliance:e.target.value }))} placeholder="合规要求(逗号分隔)" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white col-span-2" />
+                  <input value={modelForm.chapters} onChange={(e)=>setModelForm((f:any)=>({ ...f, chapters:e.target.value }))} placeholder="关联HS章节(逗号分隔, 如 33,34)" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white col-span-2" />
                 </div>
                 <div className="mt-3 flex items-center justify-end gap-2">
                   <GlowButton variant="secondary" onClick={()=>setShowModelModal(false)}>取消</GlowButton>
@@ -1102,4 +1173,4 @@ export const Capabilities: React.FC = () => {
       )}
     </div>
   );
-};
+}
