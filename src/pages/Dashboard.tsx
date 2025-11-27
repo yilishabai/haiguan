@@ -3,7 +3,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { HudPanel, DataCard, MetricDisplay, StatusBadge } from '../components/ui/HudPanel';
 import LogisticsMap from '../components/charts/LogisticsMap';
 import { useNavigate } from 'react-router-dom';
-import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getTradeStreamBatch, getTodayGMV, getPortsCongestion, consistencyCheck } from '../lib/sqlite';
+import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getTradeStreamBatch, getTodayGMV, getPortsCongestion, consistencyCheck, getKpiImprovements } from '../lib/sqlite';
 import { 
   Package,
   Activity,
@@ -28,6 +28,7 @@ export const Dashboard: React.FC = () => {
   const [tps] = useState(0);
   const [ports, setPorts] = useState<{ port:string; index:number }[]>([]);
   const [syncDelay, setSyncDelay] = useState(0);
+  const [kpiImp, setKpiImp] = useState<{ acc:number; ef:number; accImp:number; efImp:number }|null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -54,6 +55,7 @@ export const Dashboard: React.FC = () => {
       setGmvToday(await getTodayGMV());
       setPorts((await getPortsCongestion()).map((p:any)=>({ port:p.port, index:p.congestionIndex })));
       setSyncDelay(await consistencyCheck());
+      setKpiImp(await getKpiImprovements());
     };
     load();
     return () => {};
@@ -92,7 +94,7 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* 核心业务 KPI */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
         <DataCard
           title="GMV (今日出口额)"
           value={`¥ ${gmvToday.toFixed(2)}`}
@@ -144,6 +146,32 @@ export const Dashboard: React.FC = () => {
           <div className="mt-4 flex items-center justify-between">
             <Truck className="text-alert-red" size={24} />
             <span className="text-xs text-gray-400">延误/阻塞</span>
+          </div>
+        </DataCard>
+
+        <DataCard
+          title="协同准确率提升"
+          value={`${(kpiImp?.accImp||0).toFixed(1)}%`}
+          trend={(kpiImp?.accImp||0) >= 10 ? 'up' : 'stable'}
+          status={(kpiImp?.accImp||0) >= 10 ? 'active' : 'processing'}
+          onClick={() => navigate('/capabilities')}
+        >
+          <div className="mt-4 flex items-center justify-between">
+            <CheckCircle className="text-emerald-green" size={24} />
+            <span className="text-xs text-gray-400">当前 {kpiImp?.acc?.toFixed(1)}%，基线 {(kpiImp?.base?.accuracy||0).toFixed?.(1) ? (kpiImp?.base?.accuracy||0).toFixed(1) : kpiImp?.base?.accuracy}</span>
+          </div>
+        </DataCard>
+
+        <DataCard
+          title="效率提升"
+          value={`${(kpiImp?.efImp||0).toFixed(1)}%`}
+          trend={(kpiImp?.efImp||0) >= 5 ? 'up' : 'stable'}
+          status={(kpiImp?.efImp||0) >= 5 ? 'active' : 'processing'}
+          onClick={() => navigate('/collaboration')}
+        >
+          <div className="mt-4 flex items-center justify-between">
+            <Activity className="text-neon-blue" size={24} />
+            <span className="text-xs text-gray-400">当前 {kpiImp?.ef?.toFixed(1)}%，基线 {(kpiImp?.base?.efficiency||0).toFixed?.(1) ? (kpiImp?.base?.efficiency||0).toFixed(1) : kpiImp?.base?.efficiency}</span>
           </div>
         </DataCard>
       </div>

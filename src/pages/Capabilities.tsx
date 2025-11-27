@@ -1,29 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, PieChart, Pie, Cell } from 'recharts';
+import { Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import * as echarts from 'echarts';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
-import { 
-  Brain, 
-  Cpu, 
-  Database, 
-  TrendingUp, 
-  Target, 
-  Zap,
-  Settings,
-  Play,
-  Pause,
-  RefreshCw,
-  Download,
-  Upload,
-  Eye,
-  Edit,
-  Trash2,
-  Code,
-  FileText,
-  Terminal,
-  X,
-  FileCode
-} from 'lucide-react';
+import { Brain, Cpu, Database, TrendingUp, Target, Zap, Play, RefreshCw, Download, Upload, Eye, Edit, Trash2, Terminal, X, FileCode, FileText } from 'lucide-react';
 import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll } from '../lib/sqlite';
 
 // 算法库数据
@@ -337,8 +316,10 @@ export const Capabilities: React.FC = () => {
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<any | null>(null);
   const [selectedModel, setSelectedModel] = useState<any | null>(null);
   const [algPage, setAlgPage] = useState(1);
-  const [algPageSize, setAlgPageSize] = useState(5);
+  const [algPageSize, setAlgPageSize] = useState(10);
   const [algKeyword, setAlgKeyword] = useState('');
+  const [algCategory, setAlgCategory] = useState<'all'|'optimization'|'coordination'|'inventory'|'control'|'decision'>('all');
+  const [algSort, setAlgSort] = useState<'updated'|'accuracy'|'performance'|'usage'>('updated');
   const [modelKeyword, setModelKeyword] = useState('');
   const [showModelModal, setShowModelModal] = useState(false);
   const [modelForm, setModelForm] = useState<any>({ id:'', name:'', category:'beauty', version:'v1.0.0', status:'active', enterprises:0, orders:0, description:'', scenarios:'', compliance:'', chapters:'', successRate:90, lastUpdated:new Date().toISOString().slice(0,10), maintainer:'' });
@@ -346,6 +327,8 @@ export const Capabilities: React.FC = () => {
   const [orderList, setOrderList] = useState<any[]>([]);
   const [reco, setReco] = useState<any | null>(null);
   const [applyResult, setApplyResult] = useState<{ score: number; messages: string[] } | null>(null);
+  const [abA, setAbA] = useState<string>('');
+  const [abB, setAbB] = useState<string>('');
   
   // Right Panel State
   const [rightPanelTab, setRightPanelTab] = useState<'overview' | 'code' | 'logs'>('overview');
@@ -586,7 +569,16 @@ export const Capabilities: React.FC = () => {
               <HudPanel title="算法库管理" subtitle="核心算法列表与状态">
                 <div className="space-y-3">
                   {(() => {
-                    const list = algKeyword ? algorithms.filter((a:any)=> (a.name||'').toLowerCase().includes(algKeyword.toLowerCase()) || (a.description||'').toLowerCase().includes(algKeyword.toLowerCase()) || (a.category||'').toLowerCase().includes(algKeyword.toLowerCase())) : algorithms;
+                    let list = algKeyword ? algorithms.filter((a:any)=> (a.name||'').toLowerCase().includes(algKeyword.toLowerCase()) || (a.description||'').toLowerCase().includes(algKeyword.toLowerCase()) || (a.category||'').toLowerCase().includes(algKeyword.toLowerCase())) : algorithms;
+                    if (algCategory !== 'all') list = list.filter((a:any)=>a.category===algCategory);
+                    list = [...list].sort((a:any,b:any)=>{
+                      if (algSort==='accuracy') return (b.accuracy||0)-(a.accuracy||0);
+                      if (algSort==='performance') return (b.performance||0)-(a.performance||0);
+                      if (algSort==='usage') return (b.usage||0)-(a.usage||0);
+                      const ta = new Date(a.lastUpdated||0).getTime();
+                      const tb = new Date(b.lastUpdated||0).getTime();
+                      return tb - ta;
+                    })
                     const totalPages = Math.max(1, Math.ceil(list.length / algPageSize));
                     const page = Math.min(algPage, totalPages);
                     const start = (page - 1) * algPageSize;
@@ -665,9 +657,25 @@ export const Capabilities: React.FC = () => {
                   <div className="flex items-center gap-2 text-xs text-gray-400">
                     <span>每页</span>
                     <select value={algPageSize} onChange={(e)=>setAlgPageSize(parseInt(e.target.value)||5)} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white">
-                      {[5,10,15].map(s=> (<option key={s} value={s}>{s}</option>))}
+                      {[10,15,20].map(s=> (<option key={s} value={s}>{s}</option>))}
                     </select>
                     <span>项</span>
+                    <span className="ml-4">分类</span>
+                    <select value={algCategory} onChange={(e)=>{ setAlgCategory(e.target.value as any); setAlgPage(1) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white">
+                      <option value="all">全部</option>
+                      <option value="optimization">优化</option>
+                      <option value="coordination">协同</option>
+                      <option value="inventory">库存</option>
+                      <option value="control">管控</option>
+                      <option value="decision">决策</option>
+                    </select>
+                    <span className="ml-4">排序</span>
+                    <select value={algSort} onChange={(e)=>{ setAlgSort(e.target.value as any); setAlgPage(1) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white">
+                      <option value="updated">更新时间</option>
+                      <option value="accuracy">准确率</option>
+                      <option value="performance">性能</option>
+                      <option value="usage">调用次数</option>
+                    </select>
                     <span className="ml-4">检索</span>
                     <input value={algKeyword} onChange={(e)=>{ setAlgKeyword(e.target.value); setAlgPage(1) }} placeholder="按名称/描述/分类" className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white" />
                   </div>
@@ -835,15 +843,15 @@ export const Capabilities: React.FC = () => {
 
                   {rightPanelTab === 'logs' && (
                     <div className="space-y-2 font-mono text-xs animate-in fade-in slide-in-from-right-4 duration-300">
-                      {[1, 2, 3, 4, 5].map((i) => (
-                        <div key={i} className="p-3 bg-slate-800/30 rounded border border-slate-700/50 flex justify-between items-center hover:bg-slate-800/50 transition-colors">
+                      {executionHistory.map((e) => (
+                        <div key={e.id} className="p-3 bg-slate-800/30 rounded border border-slate-700/50 flex justify-between items-center hover:bg-slate-800/50 transition-colors">
                           <div className="space-y-1">
-                            <div className="text-gray-400">2025-11-27 10:23:{10 + i}</div>
-                            <div className="text-white">Input: Batch_#{2094 + i}</div>
+                            <div className="text-gray-400">{new Date().toLocaleDateString()} {e.time}</div>
+                            <div className="text白">Input: {e.input}</div>
                           </div>
                           <div className="text-right">
-                            <div className="text-emerald-400">Success</div>
-                            <div className="text-gray-500">{120 + i * 5}ms</div>
+                            <div className="text-emerald-400">{e.status}</div>
+                            <div className="text-gray-500">{e.duration}</div>
                           </div>
                         </div>
                       ))}
@@ -935,6 +943,57 @@ export const Capabilities: React.FC = () => {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          </HudPanel>
+
+          <HudPanel title="A/B算法对比" subtitle="两种算法效果对比">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <div className="text-xs text-gray-400">算法A</div>
+                <select value={abA} onChange={(e)=>setAbA(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+                  <option value="">选择算法A</option>
+                  {algorithms.map(a=> (<option key={a.id} value={a.id}>{a.name}</option>))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs text-gray-400">算法B</div>
+                <select value={abB} onChange={(e)=>setAbB(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+                  <option value="">选择算法B</option>
+                  {algorithms.map(a=> (<option key={a.id} value={a.id}>{a.name}</option>))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                {(() => {
+                  const A = algorithms.find((x:any)=>x.id===abA)
+                  const B = algorithms.find((x:any)=>x.id===abB)
+                  if (!A || !B) return <div className="text-xs text-gray-500">选择两种算法以查看对比</div>
+                  const accDiff = Math.round(((A.accuracy - B.accuracy) * 10)) / 10
+                  const perfDiff = Math.round(((A.performance - B.performance) * 10)) / 10
+                  const useDiff = (A.usage - B.usage)
+                  return (
+                    <div className="p-3 bg-slate-800/50 rounded border border-slate-700">
+                      <div className="text-xs text-gray-400 mb-2">对比结果（A - B）</div>
+                      <div className="grid grid-cols-3 gap-2 text-sm">
+                        <div>
+                          <div className="text-gray-500">准确率</div>
+                          <div className="digital-display text-white">{A.accuracy}% vs {B.accuracy}%</div>
+                          <div className="text-emerald-400 text-xs">差值 {accDiff}%</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500">性能</div>
+                          <div className="digital-display text白">{A.performance}% vs {B.performance}%</div>
+                          <div className="text-emerald-400 text-xs">差值 {perfDiff}%</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500">调用次数</div>
+                          <div className="digital-display text-white">{A.usage} vs {B.usage}</div>
+                          <div className="text-emerald-400 text-xs">差值 {useDiff}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           </HudPanel>

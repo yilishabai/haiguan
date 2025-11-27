@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { CreditCard, Truck } from 'lucide-react'
 import { HudPanel, StatusBadge, GlowButton } from '../components/ui/HudPanel'
 import { queryAll, getPaymentMethods, completeSettlement, getAlgorithmRecommendations, getHsChapters, getIncotermsList, getTransportModes } from '../lib/sqlite'
@@ -24,7 +24,7 @@ export const CollaborationWorkbench: React.FC = () => {
   const [incotermsList, setIncotermsList] = useState<string[]>([])
   const [transportList, setTransportList] = useState<string[]>([])
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const where: string[] = []
     const params: any = { $limit: pageSize, $offset: (page-1)*pageSize }
     if (q) { where.push(`(o.order_number LIKE $q OR o.enterprise LIKE $q)`); params.$q = `%${q}%` }
@@ -73,23 +73,19 @@ export const CollaborationWorkbench: React.FC = () => {
         (SELECT IFNULL(SUM(o.amount),0) FROM orders o WHERE date(o.created_at)=date('now') AND EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id)) as customsAmount,
         (SELECT COUNT(*) FROM customs_clearances WHERE status='held') as blocked
     `)
-    setMetrics({ pending: mrows[0]?.pending || 0, customsAmount: Math.round((mrows[0]?.customsAmount || 0)/1000)/1000, blocked: mrows[0]?.blocked || 0 })
+    setMetrics({ pending: mrows[0]?.pending || 0, customsAmount: Math.round(((mrows[0]?.customsAmount || 0)/1000)*10)/10, blocked: mrows[0]?.blocked || 0 })
     const pm = await getPaymentMethods()
     setMethods(pm.map((x:any)=>({ name:x.name, successRate:x.successRate, avgTime:x.avgTime })))
     const chs = await getHsChapters()
     setChapters(chs)
     setIncotermsList(await getIncotermsList() as any)
     setTransportList(await getTransportModes() as any)
-  }
+  }, [q, category, onlyAbnormal, hsChapter, incoterms, transport, page, pageSize])
 
   useEffect(() => {
     const id = setTimeout(() => { void load() }, 0)
     return () => clearTimeout(id)
-  }, [])
-  useEffect(() => {
-    const id = setTimeout(() => { void load() }, 0)
-    return () => clearTimeout(id)
-  }, [q, category, onlyAbnormal, hsChapter, incoterms, transport, page, pageSize])
+  }, [load])
   useEffect(() => {
     const run = async () => {
       const orderId = tasks.find(t=>t.id===selectedTask)?.orderId

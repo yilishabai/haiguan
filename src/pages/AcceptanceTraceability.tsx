@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HudPanel, GlowButton } from '../components/ui/HudPanel';
-import { queryAll, runDataQualityScan, getBusinessModels, getHsChapters, getOrderPrimaryHs, getBusinessModelForOrder, applyBusinessModel, getDocuments, computeLandedCost } from '../lib/sqlite';
+import { queryAll, runDataQualityScan, getHsChapters, getOrderPrimaryHs, getBusinessModelForOrder, applyBusinessModel, getDocuments, computeLandedCost } from '../lib/sqlite';
 import { 
   LineChart, Line, ResponsiveContainer, YAxis 
 } from 'recharts';
 import { 
-  FileText, Plane, Zap, Package, CheckCircle, 
-  MapPin, Activity, Thermometer, ShieldCheck, 
+  Plane, Zap, Package, CheckCircle, 
+  MapPin, Thermometer, ShieldCheck, 
   FileCheck, Box
 } from 'lucide-react';
 

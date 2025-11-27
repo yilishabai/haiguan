@@ -337,6 +337,21 @@ function seed(db: Database) {
     { id:'inventory-optimization', name:'多级库存优化算法', cat:'inventory', ver:'v3.0.1', st:'testing', acc:88.5, perf:85.7, use:567, desc:'考虑需求不确定性的多级库存网络优化算法', feats:'["安全库存","补货策略","成本优化"]', upd:'2025-11-25', auth:'库存优化团队', code:'def optimize_inventory_levels(nodes, demand_dist):\n    network = Graph(nodes)\n    safety_stock = calculate_safety_stock(demand_dist, service_level=0.99)\n    return network.min_cost_flow(safety_stock)' },
     { id:'process-control', name:'全流程管控算法', cat:'control', ver:'v2.5.4', st:'active', acc:96.1, perf:91.2, use:2100, desc:'跨境供应链全流程实时监控与异常处理算法', feats:'["异常检测","流程优化","质量控制"]', upd:'2025-11-18', auth:'流程管控部', code:'def monitor_process_flow(stream_data):\n    anomaly_detector = IsolationForest(contamination=0.01)\n    anomalies = anomaly_detector.fit_predict(stream_data)\n    if anomalies.any():\n        trigger_alert(anomalies)\n    return process_status(stream_data)' },
     { id:'collaborative-decision', name:'协同决策响应算法', cat:'decision', ver:'v1.3.2', st:'development', acc:85.3, perf:78.9, use:234, desc:'支持多方协同的智能决策响应算法', feats:'["群体决策","冲突解决","方案评估"]', upd:'2025-11-22', auth:'决策算法组', code:'def collaborative_decision(proposals, weights):\n    matrix = build_decision_matrix(proposals)\n    consensus = calculate_consensus(matrix, weights)\n    return optimize_response(consensus, constraints)'}
+    ,{ id:'customs-anomaly', name:'海关异常检测算法', cat:'control', ver:'v1.0.0', st:'active', acc:92.4, perf:88.1, use:412, desc:'海关智慧大脑：文件/申报/交易异常检测', feats:'["单证一致性","预归类校验","高额交易预警"]', upd:'2025-11-26', auth:'风控组', code:'def customs_anomaly_scan(documents, declarations, trades):\n    anomalies = []\n    if not documents: anomalies.append(\'missing_documents\')\n    if any([t.amount>50000 for t in trades]): anomalies.append(\'high_value\')\n    return anomalies'}
+    ,{ id:'demand-forecast', name:'需求预测算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:90.3, perf:87.6, use:768, desc:'基于时序与节假日因子的需求预测', feats:'["季节性","节假日","促销因子"]', upd:'2025-11-26', auth:'预测组', code:'def demand_forecast(series, holidays, promo):\n    model = ARIMA(order=(2,1,2))\n    model.fit(series)\n    return model.predict(steps=30)'}
+    ,{ id:'payment-risk', name:'支付风控评分算法', cat:'decision', ver:'v1.0.0', st:'active', acc:89.1, perf:90.4, use:532, desc:'通道成功率、合规与汇率时点综合评分', feats:'["成功率","合规度","时点风险"]', upd:'2025-11-26', auth:'风控组', code:'def payment_risk_score(channel, amount, rate):\n    score = channel.success_rate * 0.7 - (amount/100000) * 0.2\n    return max(0, min(100, score))'}
+    ,{ id:'vrp-route-optimization', name:'车辆路径优化算法', cat:'optimization', ver:'v1.2.0', st:'active', acc:93.5, perf:88.0, use:640, desc:'多仓多车辆的VRP路径求解', feats:'["VRP","约束求解","动态更新"]', upd:'2025-11-26', auth:'运筹优化组', code:'def solve_vrp(nodes, vehicles):\n    routes = []\n    for v in vehicles:\n        routes.append([v.start])\n    return routes'}
+    ,{ id:'multimodal-selector', name:'多式联运选择算法', cat:'decision', ver:'v1.1.0', st:'active', acc:88.7, perf:92.1, use:712, desc:'空海铁公多式联运选择与成本时效平衡', feats:'["模式选择","成本时效","风险权重"]', upd:'2025-11-26', auth:'运输规划组', code:'def choose_mode(distance, urgency, budget):\n    if urgency>0.8: return "AIR"\n    if distance>3000: return "OCEAN"\n    return "RAIL"'}
+    ,{ id:'hs-classifier', name:'海关归类算法', cat:'control', ver:'v2.0.0', st:'testing', acc:86.2, perf:84.9, use:480, desc:'基于文本与结构化特征的HS预归类', feats:'["NLP","特征工程","置信度"]', upd:'2025-11-26', auth:'合规智能组', code:'def classify_hs(description):\n    return "3304.99.00"'}
+    ,{ id:'tariff-estimator', name:'关税估算算法', cat:'control', ver:'v1.0.0', st:'active', acc:91.4, perf:90.1, use:531, desc:'多税种综合估算与币种换算', feats:'["税率","汇率","模拟"]', upd:'2025-11-26', auth:'税务引擎组', code:'def estimate_tariff(hs, amount, currency):\n    return amount*0.12'}
+    ,{ id:'doc-consistency', name:'单证一致性校验算法', cat:'control', ver:'v1.0.0', st:'active', acc:95.1, perf:89.2, use:820, desc:'PO/PI/CI/PL/BL/AWB 等单证一致性校验', feats:'["OCR","字段比对","规则引擎"]', upd:'2025-11-26', auth:'文档系统组', code:'def check_docs(po, pi, ci, pl):\n    return []'}
+    ,{ id:'coldchain-anomaly', name:'冷链异常检测算法', cat:'control', ver:'v1.0.0', st:'active', acc:92.3, perf:88.8, use:406, desc:'冷链设备温湿度与震动异常检测', feats:'["时序异常","传感器融合","报警"]', upd:'2025-11-26', auth:'IoT智能组', code:'def detect_coldchain_anomaly(timeseries):\n    return False'}
+    ,{ id:'leadtime-prediction', name:'交期预测算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:90.7, perf:89.9, use:734, desc:'基于历史ETA/ETD与路由的交期预测', feats:'["ETA预测","特征工程","偏差校正"]', upd:'2025-11-26', auth:'时效预测组', code:'def predict_leadtime(route, history):\n    return 72'}
+    ,{ id:'inventory-allocation', name:'库存分配优化算法', cat:'inventory', ver:'v1.1.0', st:'active', acc:89.8, perf:87.5, use:622, desc:'多级库存与服务水平的分配优化', feats:'["LP","服务水平","补货策略"]', upd:'2025-11-26', auth:'供应计划组', code:'def optimize_allocation(nodes, demand):\n    return {"nodeA":100}' }
+    ,{ id:'demand-sensing', name:'需求感知算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:87.9, perf:90.8, use:410, desc:'短期需求感知与促销因子建模', feats:'["短期预测","促销因子","噪声滤波"]', upd:'2025-11-26', auth:'需求洞察组', code:'def sense_demand(streams):\n    return 1.0'}
+    ,{ id:'fraud-detection', name:'支付欺诈检测算法', cat:'decision', ver:'v1.0.0', st:'active', acc:93.2, perf:90.3, use:512, desc:'跨境支付欺诈模式识别与拦截', feats:'["异常行为","黑名单","规则学习"]', upd:'2025-11-26', auth:'风控组', code:'def detect_fraud(tx):\n    return False'}
+    ,{ id:'fx-hedging', name:'汇率套期保值算法', cat:'decision', ver:'v1.0.0', st:'active', acc:88.4, perf:92.6, use:295, desc:'择时与仓位管理的套保策略', feats:'["择时","仓位","风险限额"]', upd:'2025-11-26', auth:'金融工程组', code:'def hedge_fx(exposure, rate):\n    return {"hedge_ratio":0.6}'}
+    ,{ id:'dynamic-pricing', name:'动态定价算法', cat:'decision', ver:'v1.0.0', st:'active', acc:86.5, perf:91.2, use:377, desc:'库存与需求驱动的动态定价', feats:'["价格弹性","库存约束","收益优化"]', upd:'2025-11-26', auth:'收益管理组', code:'def dynamic_price(stock, demand):\n    return 199.0'}
   ].forEach(x=>{
     db.run(`INSERT INTO algorithms(id,name,category,version,status,accuracy,performance,usage,description,features,lastUpdated,author,code) VALUES($id,$n,$c,$v,$s,$a,$p,$u,$d,$f,$lu,$au,$co)`,{
       $id:x.id,$n:x.name,$c:x.cat,$v:x.ver,$s:x.st,$a:x.acc,$p:x.perf,$u:x.use,$d:x.desc,$f:x.feats,$lu:x.upd,$au:x.auth,$co:x.code
@@ -346,7 +361,21 @@ function seed(db: Database) {
   ;[
     { id:'beauty-model', name:'美妆品类业务模型', cat:'beauty', ver:'v1.2.0', st:'active', ent:156, ord:2341, desc:'专门针对美妆品类的跨境供应链业务逻辑模型', sc:'["NMPA备案","保质期管理","成分合规"]', cp:'["NMPA","CFDA","海关编码"]', sr:92.5, lu:'2025-11-20', mt:'美妆业务部' },
     { id:'wine-model', name:'酒水品类业务模型', cat:'wine', ver:'v1.1.8', st:'active', ent:89, ord:1456, desc:'针对酒水品类的特殊监管要求和业务流程模型', sc:'["酒类许可","年龄验证","税收计算"]', cp:'["酒类专卖","海关","税务"]', sr:89.2, lu:'2025-11-18', mt:'酒水业务部' },
-    { id:'appliance-model', name:'家电品类业务模型', cat:'appliance', ver:'v2.0.3', st:'active', ent:203, ord:1876, desc:'家电产品的跨境供应链标准化业务模型', sc:'["3C认证","能效标识","售后服务"]', cp:'["3C认证","能效标识","电子废物"]', sr:94.8, lu:'2025-11-23', mt:'家电业务部' }
+    { id:'appliance-model', name:'家电品类业务模型', cat:'appliance', ver:'v2.0.3', st:'active', ent:203, ord:1876, desc:'家电产品的跨境供应链标准化业务模型', sc:'["3C认证","能效标识","售后服务"]', cp:'["3C认证","能效标识","电子废物"]', sr:94.8, lu:'2025-11-23', mt:'家电业务部' },
+    { id:'electronics-model', name:'电子品类业务模型', cat:'electronics', ver:'v1.0.0', st:'active', ent:178, ord:1620, desc:'电子产品的合规与跨境业务模型', sc:'["CCC认证","电磁兼容","电池规范"]', cp:'["CCC","EMC","UN38.3"]', sr:91.2, lu:'2025-11-26', mt:'电子业务部' },
+    { id:'textile-model', name:'纺织品类业务模型', cat:'textile', ver:'v1.0.0', st:'active', ent:142, ord:1334, desc:'纺织服装的跨境监管与质量标准模型', sc:'["纺织标签","面料成分","安全标准"]', cp:'["GB/T","ISO","海关编码"]', sr:88.6, lu:'2025-11-26', mt:'纺织业务部' }
+    ,{ id:'beauty-skin-care', name:'美妆-护肤模型', cat:'beauty', ver:'v1.0.0', st:'active', ent:210, ord:2980, desc:'护肤品监管与备案业务模型', sc:'["NMPA备案","配方合规","功效宣称"]', cp:'["NMPA","化妆品监督条例","海关编码"]', sr:93.1, lu:'2025-11-26', mt:'美妆业务部' }
+    ,{ id:'beauty-fragrance', name:'美妆-香氛模型', cat:'beauty', ver:'v1.0.0', st:'active', ent:162, ord:1820, desc:'香氛进口监管与税务模型', sc:'["成分合规","标签合规","税收管理"]', cp:'["NMPA","关税","消费税"]', sr:90.6, lu:'2025-11-26', mt:'美妆业务部' }
+    ,{ id:'wine-red', name:'酒水-葡萄酒模型', cat:'wine', ver:'v1.0.0', st:'active', ent:128, ord:1560, desc:'红酒进口合规与物流模型', sc:'["原产地证","关税消费税","冷链"]', cp:'["原产地","关税","消费税"]', sr:89.4, lu:'2025-11-26', mt:'酒水业务部' }
+    ,{ id:'wine-spirits', name:'酒水-烈酒模型', cat:'wine', ver:'v1.0.0', st:'active', ent:97, ord:1124, desc:'烈酒进口监管与税务模型', sc:'["许可","标签","消费税"]', cp:'["许可证","原产地","消费税"]', sr:88.7, lu:'2025-11-26', mt:'酒水业务部' }
+    ,{ id:'electronics-smartphone', name:'电子-智能手机模型', cat:'electronics', ver:'v1.0.0', st:'active', ent:245, ord:4120, desc:'智能手机跨境业务模型', sc:'["CCC","EMC","无线许可"]', cp:'["CCC","EMC","SRRC"]', sr:92.2, lu:'2025-11-26', mt:'电子业务部' }
+    ,{ id:'electronics-battery', name:'电子-电池模型', cat:'electronics', ver:'v1.0.0', st:'active', ent:138, ord:1680, desc:'电池产品跨境业务模型', sc:'["UN38.3","运输安全","环保"]', cp:'["UN38.3","危险品","环保"]', sr:90.1, lu:'2025-11-26', mt:'电子业务部' }
+    ,{ id:'electronics-semiconductor', name:'电子-半导体模型', cat:'electronics', ver:'v1.0.0', st:'active', ent:76, ord:840, desc:'半导体产品跨境业务模型', sc:'["出口管制","产地认证","保税"]', cp:'["EAR","原产地","保税监管"]', sr:87.3, lu:'2025-11-26', mt:'电子业务部' }
+    ,{ id:'textile-garment', name:'纺织-服装模型', cat:'textile', ver:'v1.0.0', st:'active', ent:189, ord:2380, desc:'服装跨境业务模型', sc:'["纺织标签","成分标识","尺码规范"]', cp:'["GB/T","ISO","海关编码"]', sr:88.9, lu:'2025-11-26', mt:'纺织业务部' }
+    ,{ id:'textile-child', name:'纺织-童装模型', cat:'textile', ver:'v1.0.0', st:'active', ent:102, ord:1183, desc:'童装安全标准与进口业务模型', sc:'["安全标准","阻燃","重金属"]', cp:'["GB","REACH","CPSIA"]', sr:86.4, lu:'2025-11-26', mt:'纺织业务部' }
+    ,{ id:'textile-home', name:'纺织-家纺模型', cat:'textile', ver:'v1.0.0', st:'active', ent:121, ord:1356, desc:'家纺产品跨境业务模型', sc:'["阻燃","标签","材料"]', cp:'["GB/T","ISO","海关编码"]', sr:87.7, lu:'2025-11-26', mt:'纺织业务部' }
+    ,{ id:'appliance-kitchen', name:'家电-厨房电器模型', cat:'appliance', ver:'v1.0.0', st:'active', ent:156, ord:2140, desc:'厨房电器跨境业务模型', sc:'["3C","能效","食品接触"]', cp:'["CCC","能效标识","食品接触"]', sr:91.5, lu:'2025-11-26', mt:'家电业务部' }
+    ,{ id:'appliance-hvac', name:'家电-暖通模型', cat:'appliance', ver:'v1.0.0', st:'active', ent:88, ord:920, desc:'暖通设备跨境业务模型', sc:'["能效","制冷剂","安装许可"]', cp:'["能效标识","环境规范","安装许可"]', sr:89.8, lu:'2025-11-26', mt:'家电业务部' }
   ].forEach(x=>{
     db.run(`INSERT INTO business_models(id,name,category,version,status,enterprises,orders,description,scenarios,compliance,successRate,lastUpdated,maintainer) VALUES($id,$n,$c,$v,$s,$e,$o,$d,$sc,$cp,$sr,$lu,$mt)`,{
       $id:x.id,$n:x.name,$c:x.cat,$v:x.ver,$s:x.st,$e:x.ent,$o:x.ord,$d:x.desc,$sc:x.sc,$cp:x.cp,$sr:x.sr,$lu:x.lu,$mt:x.mt
@@ -855,6 +884,53 @@ function migrate(db: Database) {
       }
     }
   } catch (e) {}
+
+  try {
+    ;[
+      { id:'customs-anomaly', name:'海关异常检测算法', cat:'control', ver:'v1.0.0', st:'active', acc:92.4, perf:88.1, use:412, desc:'海关智慧大脑：文件/申报/交易异常检测', feats:'["单证一致性","预归类校验","高额交易预警"]', upd:'2025-11-26', auth:'风控组', code:'def customs_anomaly_scan(documents, declarations, trades):\n    anomalies = []\n    if not documents: anomalies.append(\'missing_documents\')\n    if any([t.amount>50000 for t in trades]): anomalies.append(\'high_value\')\n    return anomalies' },
+      { id:'demand-forecast', name:'需求预测算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:90.3, perf:87.6, use:768, desc:'基于时序与节假日因子的需求预测', feats:'["季节性","节假日","促销因子"]', upd:'2025-11-26', auth:'预测组', code:'def demand_forecast(series, holidays, promo):\n    model = ARIMA(order=(2,1,2))\n    model.fit(series)\n    return model.predict(steps=30)' },
+      { id:'payment-risk', name:'支付风控评分算法', cat:'decision', ver:'v1.0.0', st:'active', acc:89.1, perf:90.4, use:532, desc:'通道成功率、合规与汇率时点综合评分', feats:'["成功率","合规度","时点风险"]', upd:'2025-11-26', auth:'风控组', code:'def payment_risk_score(channel, amount, rate):\n    score = channel.success_rate * 0.7 - (amount/100000) * 0.2\n    return max(0, min(100, score))' },
+      { id:'vrp-route-optimization', name:'车辆路径优化算法', cat:'optimization', ver:'v1.2.0', st:'active', acc:93.5, perf:88.0, use:640, desc:'多仓多车辆的VRP路径求解', feats:'["VRP","约束求解","动态更新"]', upd:'2025-11-26', auth:'运筹优化组', code:'def solve_vrp(nodes, vehicles):\n    routes = []\n    for v in vehicles:\n        routes.append([v.start])\n    return routes' },
+      { id:'multimodal-selector', name:'多式联运选择算法', cat:'decision', ver:'v1.1.0', st:'active', acc:88.7, perf:92.1, use:712, desc:'空海铁公多式联运选择与成本时效平衡', feats:'["模式选择","成本时效","风险权重"]', upd:'2025-11-26', auth:'运输规划组', code:'def choose_mode(distance, urgency, budget):\n    if urgency>0.8: return "AIR"\n    if distance>3000: return "OCEAN"\n    return "RAIL"' },
+      { id:'hs-classifier', name:'海关归类算法', cat:'control', ver:'v2.0.0', st:'testing', acc:86.2, perf:84.9, use:480, desc:'基于文本与结构化特征的HS预归类', feats:'["NLP","特征工程","置信度"]', upd:'2025-11-26', auth:'合规智能组', code:'def classify_hs(description):\n    return "3304.99.00"' },
+      { id:'tariff-estimator', name:'关税估算算法', cat:'control', ver:'v1.0.0', st:'active', acc:91.4, perf:90.1, use:531, desc:'多税种综合估算与币种换算', feats:'["税率","汇率","模拟"]', upd:'2025-11-26', auth:'税务引擎组', code:'def estimate_tariff(hs, amount, currency):\n    return amount*0.12' },
+      { id:'doc-consistency', name:'单证一致性校验算法', cat:'control', ver:'v1.0.0', st:'active', acc:95.1, perf:89.2, use:820, desc:'PO/PI/CI/PL/BL/AWB 等单证一致性校验', feats:'["OCR","字段比对","规则引擎"]', upd:'2025-11-26', auth:'文档系统组', code:'def check_docs(po, pi, ci, pl):\n    return []' },
+      { id:'coldchain-anomaly', name:'冷链异常检测算法', cat:'control', ver:'v1.0.0', st:'active', acc:92.3, perf:88.8, use:406, desc:'冷链设备温湿度与震动异常检测', feats:'["时序异常","传感器融合","报警"]', upd:'2025-11-26', auth:'IoT智能组', code:'def detect_coldchain_anomaly(timeseries):\n    return False' },
+      { id:'leadtime-prediction', name:'交期预测算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:90.7, perf:89.9, use:734, desc:'基于历史ETA/ETD与路由的交期预测', feats:'["ETA预测","特征工程","偏差校正"]', upd:'2025-11-26', auth:'时效预测组', code:'def predict_leadtime(route, history):\n    return 72' },
+      { id:'inventory-allocation', name:'库存分配优化算法', cat:'inventory', ver:'v1.1.0', st:'active', acc:89.8, perf:87.5, use:622, desc:'多级库存与服务水平的分配优化', feats:'["LP","服务水平","补货策略"]', upd:'2025-11-26', auth:'供应计划组', code:'def optimize_allocation(nodes, demand):\n    return {\"nodeA\":100}' },
+      { id:'demand-sensing', name:'需求感知算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:87.9, perf:90.8, use:410, desc:'短期需求感知与促销因子建模', feats:'["短期预测","促销因子","噪声滤波"]', upd:'2025-11-26', auth:'需求洞察组', code:'def sense_demand(streams):\n    return 1.0' },
+      { id:'fraud-detection', name:'支付欺诈检测算法', cat:'decision', ver:'v1.0.0', st:'active', acc:93.2, perf:90.3, use:512, desc:'跨境支付欺诈模式识别与拦截', feats:'["异常行为","黑名单","规则学习"]', upd:'2025-11-26', auth:'风控组', code:'def detect_fraud(tx):\n    return False' },
+      { id:'fx-hedging', name:'汇率套期保值算法', cat:'decision', ver:'v1.0.0', st:'active', acc:88.4, perf:92.6, use:295, desc:'择时与仓位管理的套保策略', feats:'["择时","仓位","风险限额"]', upd:'2025-11-26', auth:'金融工程组', code:'def hedge_fx(exposure, rate):\n    return {\"hedge_ratio\":0.6}' },
+      { id:'dynamic-pricing', name:'动态定价算法', cat:'decision', ver:'v1.0.0', st:'active', acc:86.5, perf:91.2, use:377, desc:'库存与需求驱动的动态定价', feats:'["价格弹性","库存约束","收益优化"]', upd:'2025-11-26', auth:'收益管理组', code:'def dynamic_price(stock, demand):\n    return 199.0' }
+    ].forEach(x=>{
+      db.run(`INSERT OR IGNORE INTO algorithms(id,name,category,version,status,accuracy,performance,usage,description,features,lastUpdated,author,code) VALUES($id,$n,$c,$v,$s,$a,$p,$u,$d,$f,$lu,$au,$co)`,{
+        $id:x.id,$n:x.name,$c:x.cat,$v:x.ver,$s:x.st,$a:x.acc,$p:x.perf,$u:x.use,$d:x.desc,$f:x.feats,$lu:x.upd,$au:x.auth,$co:x.code
+      })
+    })
+  } catch (e) {}
+
+  try {
+    ;[
+      { id:'beauty-skin-care', name:'美妆-护肤模型', cat:'beauty', ver:'v1.0.0', st:'active', ent:210, ord:2980, desc:'护肤品监管与备案业务模型', sc:'["NMPA备案","配方合规","功效宣称"]', cp:'["NMPA","化妆品监督条例","海关编码"]', sr:93.1, lu:'2025-11-26', mt:'美妆业务部' },
+      { id:'beauty-fragrance', name:'美妆-香氛模型', cat:'beauty', ver:'v1.0.0', st:'active', ent:162, ord:1820, desc:'香氛进口监管与税务模型', sc:'["成分合规","标签合规","税收管理"]', cp:'["NMPA","关税","消费税"]', sr:90.6, lu:'2025-11-26', mt:'美妆业务部' },
+      { id:'wine-red', name:'酒水-葡萄酒模型', cat:'wine', ver:'v1.0.0', st:'active', ent:128, ord:1560, desc:'红酒进口合规与物流模型', sc:'["原产地证","关税消费税","冷链"]', cp:'["原产地","关税","消费税"]', sr:89.4, lu:'2025-11-26', mt:'酒水业务部' },
+      { id:'wine-spirits', name:'酒水-烈酒模型', cat:'wine', ver:'v1.0.0', st:'active', ent:97, ord:1124, desc:'烈酒进口监管与税务模型', sc:'["许可","标签","消费税"]', cp:'["许可证","原产地","消费税"]', sr:88.7, lu:'2025-11-26', mt:'酒水业务部' },
+      { id:'electronics-smartphone', name:'电子-智能手机模型', cat:'electronics', ver:'v1.0.0', st:'active', ent:245, ord:4120, desc:'智能手机跨境业务模型', sc:'["CCC","EMC","无线许可"]', cp:'["CCC","EMC","SRRC"]', sr:92.2, lu:'2025-11-26', mt:'电子业务部' },
+      { id:'electronics-battery', name:'电子-电池模型', cat:'electronics', ver:'v1.0.0', st:'active', ent:138, ord:1680, desc:'电池产品跨境业务模型', sc:'["UN38.3","运输安全","环保"]', cp:'["UN38.3","危险品","环保"]', sr:90.1, lu:'2025-11-26', mt:'电子业务部' },
+      { id:'electronics-semiconductor', name:'电子-半导体模型', cat:'electronics', ver:'v1.0.0', st:'active', ent:76, ord:840, desc:'半导体产品跨境业务模型', sc:'["出口管制","产地认证","保税"]', cp:'["EAR","原产地","保税监管"]', sr:87.3, lu:'2025-11-26', mt:'电子业务部' },
+      { id:'textile-garment', name:'纺织-服装模型', cat:'textile', ver:'v1.0.0', st:'active', ent:189, ord:2380, desc:'服装跨境业务模型', sc:'["纺织标签","成分标识","尺码规范"]', cp:'["GB/T","ISO","海关编码"]', sr:88.9, lu:'2025-11-26', mt:'纺织业务部' },
+      { id:'textile-child', name:'纺织-童装模型', cat:'textile', ver:'v1.0.0', st:'active', ent:102, ord:1183, desc:'童装安全标准与进口业务模型', sc:'["安全标准","阻燃","重金属"]', cp:'["GB","REACH","CPSIA"]', sr:86.4, lu:'2025-11-26', mt:'纺织业务部' },
+      { id:'textile-home', name:'纺织-家纺模型', cat:'textile', ver:'v1.0.0', st:'active', ent:121, ord:1356, desc:'家纺产品跨境业务模型', sc:'["阻燃","标签","材料"]', cp:'["GB/T","ISO","海关编码"]', sr:87.7, lu:'2025-11-26', mt:'纺织业务部' },
+      { id:'appliance-kitchen', name:'家电-厨房电器模型', cat:'appliance', ver:'v1.0.0', st:'active', ent:156, ord:2140, desc:'厨房电器跨境业务模型', sc:'["3C","能效","食品接触"]', cp:'["CCC","能效标识","食品接触"]', sr:91.5, lu:'2025-11-26', mt:'家电业务部' },
+      { id:'appliance-hvac', name:'家电-暖通模型', cat:'appliance', ver:'v1.0.0', st:'active', ent:88, ord:920, desc:'暖通设备跨境业务模型', sc:'["能效","制冷剂","安装许可"]', cp:'["能效标识","环境规范","安装许可"]', sr:89.8, lu:'2025-11-26', mt:'家电业务部' }
+    ].forEach(x=>{
+      db.run(`INSERT OR IGNORE INTO business_models(id,name,category,version,status,enterprises,orders,description,scenarios,compliance,successRate,lastUpdated,maintainer) VALUES($id,$n,$c,$v,$s,$e,$o,$d,$sc,$cp,$sr,$lu,$mt)`,{
+        $id:x.id,$n:x.name,$c:x.cat,$v:x.ver,$s:x.st,$e:x.ent,$o:x.ord,$d:x.desc,$sc:x.sc,$cp:x.cp,$sr:x.sr,$lu:x.lu,$mt:x.mt
+      })
+    })
+  } catch (e) {}
+
+  try { persist(db) } catch (e) {}
 }
 
 export async function getDatabase() {
@@ -1185,7 +1261,7 @@ export async function getInventoryData() {
 }
 
 export async function getAlgorithms() {
-  return queryAll(`SELECT * FROM algorithms`)
+  return queryAll(`SELECT * FROM algorithms ORDER BY lastUpdated DESC, usage DESC`)
 }
 
 export async function getBusinessModels() {
@@ -1410,6 +1486,36 @@ export async function getSettings() {
 export async function upsertSetting(key: string, value: string) {
   await exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`)
   await exec(`INSERT INTO settings(key,value) VALUES($k,$v) ON CONFLICT(key) DO UPDATE SET value=$v`, { $k: key, $v: value })
+}
+
+export async function getCollaborationAccuracy() {
+  const rows = await queryAll(`SELECT AVG(accuracy) as acc FROM algorithms WHERE status='active'`)
+  return Math.round(((rows[0]?.acc || 0)) * 10) / 10
+}
+
+export async function getEfficiencyRate() {
+  const rows = await queryAll(`SELECT AVG(efficiency) as ef FROM logistics`)
+  return Math.round(((rows[0]?.ef || 0)) * 10) / 10
+}
+
+export async function getKpiBaseline() {
+  await exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`)
+  const rows = await queryAll(`SELECT key, value FROM settings WHERE key IN ('baseline_accuracy','baseline_efficiency')`)
+  const map: Record<string,string> = {}
+  for (const r of rows) { map[r.key] = r.value }
+  return {
+    accuracy: parseFloat(map['baseline_accuracy'] || '80'),
+    efficiency: parseFloat(map['baseline_efficiency'] || '75')
+  }
+}
+
+export async function getKpiImprovements() {
+  const base = await getKpiBaseline()
+  const acc = await getCollaborationAccuracy()
+  const ef = await getEfficiencyRate()
+  const accImp = base.accuracy ? Math.round(((acc - base.accuracy) / base.accuracy) * 1000) / 10 : 0
+  const efImp = base.efficiency ? Math.round(((ef - base.efficiency) / base.efficiency) * 1000) / 10 : 0
+  return { acc, ef, accImp, efImp, base }
 }
 
 export async function getApplications() {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
 import { getEnterprisesPaged, countEnterprises } from '../lib/sqlite'
 
@@ -14,7 +14,7 @@ export const Enterprises: React.FC = () => {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
 
-  const fetch = async () => {
+  const fetch = useCallback(async () => {
     setLoading(true)
     const offset = (page-1) * pageSize
     const data = await getEnterprisesPaged(q, type, status, category, region, offset, pageSize)
@@ -22,9 +22,9 @@ export const Enterprises: React.FC = () => {
     setRows(data)
     setTotal(cnt)
     setLoading(false)
-  }
+  }, [q, type, status, category, region, page, pageSize])
 
-  useEffect(()=>{ fetch() }, [q, type, status, category, region, page, pageSize])
+  useEffect(()=>{ const id = setTimeout(()=>{ void fetch() }, 0); return ()=> clearTimeout(id) }, [fetch])
 
   const totalPages = useMemo(()=> Math.max(1, Math.ceil(total / pageSize)), [total, pageSize])
 

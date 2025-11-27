@@ -60,7 +60,7 @@ function Settings() {
       const rows = await getSettings();
       const obj: Record<string,string> = {};
       rows.forEach((r:any)=>{ obj[r.key] = r.value; });
-      setSettings({ theme: obj.theme || 'dark', sync_interval: obj.sync_interval || '5000', map_provider: obj.map_provider || 'jsdelivr' });
+      setSettings({ theme: obj.theme || 'dark', sync_interval: obj.sync_interval || '5000', map_provider: obj.map_provider || 'jsdelivr', baseline_accuracy: obj.baseline_accuracy || '80', baseline_efficiency: obj.baseline_efficiency || '75' });
       setLoading(false);
     };
     load();
@@ -98,6 +98,16 @@ function Settings() {
               <option value="cdnjs">CDNJS</option>
             </select>
             <div className="text-xs text-gray-500">用于全球物流地图的资源加载</div>
+          </div>
+        </HudPanel>
+
+        <HudPanel title="KPI基线设置">
+          <div className="space-y-2">
+            <div className="text-xs text-gray-400">协同准确率基线(%)</div>
+            <input value={settings.baseline_accuracy||''} onChange={(e)=>setSettings(s=>({ ...s, baseline_accuracy: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白" />
+            <div className="text-xs text-gray-400">效率基线(%)</div>
+            <input value={settings.baseline_efficiency||''} onChange={(e)=>setSettings(s=>({ ...s, baseline_efficiency: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白" />
+            <div className="text-xs text-gray-500">用于Dashboard 提升幅度计算与验收对比</div>
           </div>
         </HudPanel>
       </div>
