@@ -471,6 +471,16 @@ function migrate(db: Database) {
         })
       }
     }
+    if (!cols.includes('mode')) { db.run(`ALTER TABLE logistics ADD COLUMN mode TEXT`) }
+    if (!cols.includes('etd')) { db.run(`ALTER TABLE logistics ADD COLUMN etd TEXT`) }
+    if (!cols.includes('eta')) { db.run(`ALTER TABLE logistics ADD COLUMN eta TEXT`) }
+    if (!cols.includes('atd')) { db.run(`ALTER TABLE logistics ADD COLUMN atd TEXT`) }
+    if (!cols.includes('ata')) { db.run(`ALTER TABLE logistics ADD COLUMN ata TEXT`) }
+    if (!cols.includes('bl_no')) { db.run(`ALTER TABLE logistics ADD COLUMN bl_no TEXT`) }
+    if (!cols.includes('awb_no')) { db.run(`ALTER TABLE logistics ADD COLUMN awb_no TEXT`) }
+    if (!cols.includes('is_fcl')) { db.run(`ALTER TABLE logistics ADD COLUMN is_fcl INTEGER`) }
+    if (!cols.includes('freight_cost')) { db.run(`ALTER TABLE logistics ADD COLUMN freight_cost REAL`) }
+    if (!cols.includes('insurance_cost')) { db.run(`ALTER TABLE logistics ADD COLUMN insurance_cost REAL`) }
   } catch (e) {}
 
   try {
@@ -478,6 +488,209 @@ function migrate(db: Database) {
     const cols = (info[0]?.values || []).map((row:any[]) => row[1])
     if (!cols.includes('payment_method')) {
       db.run(`ALTER TABLE settlements ADD COLUMN payment_method TEXT`)
+    }
+  } catch (e) {}
+
+  try {
+    const info = db.exec(`PRAGMA table_info(orders)`)
+    const cols = (info[0]?.values || []).map((row:any[]) => row[1])
+    if (!cols.includes('incoterms')) { db.run(`ALTER TABLE orders ADD COLUMN incoterms TEXT`) }
+    if (!cols.includes('pi_no')) { db.run(`ALTER TABLE orders ADD COLUMN pi_no TEXT`) }
+    if (!cols.includes('ci_no')) { db.run(`ALTER TABLE orders ADD COLUMN ci_no TEXT`) }
+    if (!cols.includes('pl_no')) { db.run(`ALTER TABLE orders ADD COLUMN pl_no TEXT`) }
+    if (!cols.includes('forwarder_id')) { db.run(`ALTER TABLE orders ADD COLUMN forwarder_id TEXT`) }
+    if (!cols.includes('broker_id')) { db.run(`ALTER TABLE orders ADD COLUMN broker_id TEXT`) }
+    if (!cols.includes('carrier_id')) { db.run(`ALTER TABLE orders ADD COLUMN carrier_id TEXT`) }
+    if (!cols.includes('supplier_id')) { db.run(`ALTER TABLE orders ADD COLUMN supplier_id TEXT`) }
+    if (!cols.includes('buyer_id')) { db.run(`ALTER TABLE orders ADD COLUMN buyer_id TEXT`) }
+  } catch (e) {}
+
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS participant_roles (
+      enterprise_id TEXT,
+      role TEXT,
+      PRIMARY KEY(enterprise_id, role)
+    )`)
+    const c = db.exec(`SELECT COUNT(*) FROM participant_roles`)[0]?.values?.[0]?.[0] || 0
+    if (c === 0) {
+      const ents = db.exec(`SELECT id FROM enterprises LIMIT 10`)[0]?.values || []
+      const get = (i:number)=> ents[i]?.[0] || 'E10001'
+      db.run(`INSERT INTO participant_roles(enterprise_id,role) VALUES($e,$r)`,{ $e:get(0), $r:'supplier' })
+      db.run(`INSERT INTO participant_roles(enterprise_id,role) VALUES($e,$r)`,{ $e:get(1), $r:'buyer' })
+      db.run(`INSERT INTO participant_roles(enterprise_id,role) VALUES($e,$r)`,{ $e:get(2), $r:'forwarder' })
+      db.run(`INSERT INTO participant_roles(enterprise_id,role) VALUES($e,$r)`,{ $e:get(3), $r:'3pl' })
+      db.run(`INSERT INTO participant_roles(enterprise_id,role) VALUES($e,$r)`,{ $e:get(4), $r:'broker' })
+      db.run(`INSERT INTO participant_roles(enterprise_id,role) VALUES($e,$r)`,{ $e:get(5), $r:'carrier' })
+    }
+  } catch (e) {}
+
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS exchange_rates (
+      base TEXT,
+      quote TEXT,
+      rate REAL,
+      updated_at TEXT,
+      PRIMARY KEY(base, quote)
+    )`)
+    const c = db.exec(`SELECT COUNT(*) FROM exchange_rates`)[0]?.values?.[0]?.[0] || 0
+    if (c === 0) {
+      ;[
+        { b:'USD', q:'CNY', r:7.12 },
+        { b:'EUR', q:'CNY', r:7.80 },
+        { b:'GBP', q:'CNY', r:8.90 },
+        { b:'JPY', q:'CNY', r:0.05 }
+      ].forEach(x=> db.run(`INSERT INTO exchange_rates(base,quote,rate,updated_at) VALUES($b,$q,$r,$t)`,{ $b:x.b,$q:x.q,$r:x.r,$t:new Date().toISOString() }))
+    }
+  } catch (e) {}
+
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS ports (
+      code TEXT PRIMARY KEY,
+      name TEXT,
+      country TEXT
+    )`)
+    const c = db.exec(`SELECT COUNT(*) FROM ports`)[0]?.values?.[0]?.[0] || 0
+    if (c === 0) {
+      ;[
+        { code:'CNSHA', name:'上海港', country:'CN' },
+        { code:'CNYTN', name:'盐田港', country:'CN' },
+        { code:'USLAX', name:'洛杉矶港', country:'US' },
+        { code:'NLRTM', name:'鹿特丹港', country:'NL' },
+        { code:'JPOSA', name:'大阪港', country:'JP' }
+      ].forEach(p=> db.run(`INSERT INTO ports(code,name,country) VALUES($c,$n,$ct)`,{ $c:p.code,$n:p.name,$ct:p.country }))
+    }
+  } catch (e) {}
+
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS countries (
+      code TEXT PRIMARY KEY,
+      name TEXT
+    )`)
+    const c = db.exec(`SELECT COUNT(*) FROM countries`)[0]?.values?.[0]?.[0] || 0
+    if (c === 0) {
+      ;[
+        { code:'CN', name:'中国' }, { code:'US', name:'美国' }, { code:'GB', name:'英国' }, { code:'FR', name:'法国' }, { code:'DE', name:'德国' }, { code:'JP', name:'日本' }, { code:'SG', name:'新加坡' }
+      ].forEach(x=> db.run(`INSERT INTO countries(code,name) VALUES($c,$n)`,{ $c:x.code,$n:x.name }))
+    }
+  } catch (e) {}
+
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS units (
+      code TEXT PRIMARY KEY,
+      name TEXT,
+      factor REAL
+    )`)
+    const c = db.exec(`SELECT COUNT(*) FROM units`)[0]?.values?.[0]?.[0] || 0
+    if (c === 0) {
+      ;[
+        { code:'PCS', name:'件', factor:1 },
+        { code:'KG', name:'千克', factor:1 },
+        { code:'G', name:'克', factor:0.001 },
+        { code:'L', name:'升', factor:1 },
+        { code:'ML', name:'毫升', factor:0.001 }
+      ].forEach(u=> db.run(`INSERT INTO units(code,name,factor) VALUES($c,$n,$f)`,{ $c:u.code,$n:u.name,$f:u.factor }))
+    }
+  } catch (e) {}
+
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS carriers (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      type TEXT
+    )`)
+    const c = db.exec(`SELECT COUNT(*) FROM carriers`)[0]?.values?.[0]?.[0] || 0
+    if (c === 0) {
+      ;[
+        { id:'MSC', name:'地中海航运', type:'ocean' },
+        { id:'MAERSK', name:'马士基', type:'ocean' },
+        { id:'CMA', name:'达飞轮船', type:'ocean' },
+        { id:'COSCO', name:'中远海运', type:'ocean' },
+        { id:'MU', name:'东方航空', type:'air' },
+        { id:'CZ', name:'南方航空', type:'air' }
+      ].forEach(ca=> db.run(`INSERT INTO carriers(id,name,type) VALUES($i,$n,$t)`,{ $i:ca.id,$n:ca.name,$t:ca.type }))
+    }
+  } catch (e) {}
+
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS incoterms (
+      code TEXT PRIMARY KEY,
+      name TEXT,
+      description TEXT
+    )`)
+    const c = db.exec(`SELECT COUNT(*) FROM incoterms`)[0]?.values?.[0]?.[0] || 0
+    if (c === 0) {
+      ;[
+        { code:'EXW', name:'工厂交货', description:'买方承担最大责任' },
+        { code:'FOB', name:'船上交货', description:'卖方负责到出口港上船' },
+        { code:'CIF', name:'成本+保险+运费', description:'卖方承担运保到目的港' },
+        { code:'DDP', name:'完税后交货', description:'卖方承担最大责任' }
+      ].forEach(i=> db.run(`INSERT INTO incoterms(code,name,description) VALUES($c,$n,$d)`,{ $c:i.code,$n:i.name,$d:i.description }))
+    }
+  } catch (e) {}
+
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS documents (
+      id TEXT PRIMARY KEY,
+      order_id TEXT,
+      type TEXT, -- PO/PI/CI/PL/BL/AWB
+      number TEXT,
+      issued_at TEXT,
+      url TEXT,
+      extra TEXT
+    )`)
+    const cnt = db.exec(`SELECT COUNT(*) FROM documents`)[0]?.values?.[0]?.[0] || 0
+    if (cnt === 0) {
+      const orders = db.exec(`SELECT id, order_number FROM orders LIMIT 8`)[0]?.values || []
+      let i = 1
+      for (const o of orders) {
+        const oid = o[0]
+        const ono = o[1]
+        ;['PO','PI','CI','PL'].forEach(t => {
+          db.run(`INSERT INTO documents(id,order_id,type,number,issued_at,url,extra) VALUES($id,$oid,$t,$no,$at,$url,$ex)`,{
+            $id:`D${i++}`,$oid:oid,$t:t,$no:`${t}-${ono}`,$at:new Date().toISOString(),$url:`https://docs.example.com/${t}-${ono}.pdf`,$ex: JSON.stringify({ currency:'USD' })
+          })
+        })
+        const mode = ['FCL','AIR'][Math.floor(Math.random()*2)]
+        if (mode==='FCL') {
+          db.run(`INSERT INTO documents(id,order_id,type,number,issued_at,url,extra) VALUES($id,$oid,'BL',$no,$at,$url,$ex)`,{
+            $id:`D${i++}`,$oid:oid,$no:`MBL-${ono}`,$at:new Date().toISOString(),$url:`https://docs.example.com/MBL-${ono}.pdf`,$ex: JSON.stringify({ master:true })
+          })
+        } else {
+          db.run(`INSERT INTO documents(id,order_id,type,number,issued_at,url,extra) VALUES($id,$oid,'AWB',$no,$at,$url,$ex)`,{
+            $id:`D${i++}`,$oid:oid,$no:`AWB-${ono}`,$at:new Date().toISOString(),$url:`https://docs.example.com/AWB-${ono}.pdf`,$ex: JSON.stringify({ iata:'MU' })
+          })
+        }
+      }
+    }
+  } catch (e) {}
+
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS track_events (
+      id TEXT PRIMARY KEY,
+      logistics_id TEXT,
+      event TEXT,
+      status TEXT,
+      ts TEXT
+    )`)
+    const cnt = db.exec(`SELECT COUNT(*) FROM track_events`)[0]?.values?.[0]?.[0] || 0
+    if (cnt === 0) {
+      const logs = db.exec(`SELECT id FROM logistics LIMIT 8`)[0]?.values || []
+      let i = 1
+      const seq = [
+        { e:'SO Confirmed', s:'ok' },
+        { e:'Cut-off', s:'ok' },
+        { e:'ETD', s:'ok' },
+        { e:'ETA', s:'ok' },
+        { e:'Customs', s:'ok' },
+        { e:'Delivery', s:'ok' }
+      ]
+      for (const l of logs) {
+        for (const step of seq) {
+          db.run(`INSERT INTO track_events(id,logistics_id,event,status,ts) VALUES($id,$lid,$e,$s,$t)`,{
+            $id:`T${i++}`,$lid:l[0],$e:step.e,$s:step.s,$t:new Date().toISOString()
+          })
+        }
+      }
     }
   } catch (e) {}
 
@@ -490,6 +703,19 @@ function migrate(db: Database) {
     }
     if (!existing.includes('textile-model')) {
       db.run(`INSERT INTO business_models(id,name,category,version,status,enterprises,orders,description,scenarios,compliance,successRate,lastUpdated,maintainer) VALUES('textile-model','纺织品类业务模型','textile','v1.0.1','active',132,1789,'纺织品跨境品质与合规模型','["面料溯源","环保认证","尺码标准"]','["REACH","海关","税务"]',88.6,'2025-11-23','纺织业务部')`)
+    }
+  } catch (e) {}
+
+  try {
+    const info = db.exec(`PRAGMA table_info(business_models)`)
+    const cols = (info[0]?.values || []).map((row:any[]) => row[1])
+    if (!cols.includes('chapters')) {
+      db.run(`ALTER TABLE business_models ADD COLUMN chapters TEXT`)
+      db.run(`UPDATE business_models SET chapters='["33"]' WHERE category='beauty'`)
+      db.run(`UPDATE business_models SET chapters='["22"]' WHERE category='wine'`)
+      db.run(`UPDATE business_models SET chapters='["84","85"]' WHERE category='appliance'`)
+      db.run(`UPDATE business_models SET chapters='["85"]' WHERE category='electronics'`)
+      db.run(`UPDATE business_models SET chapters='["61","62"]' WHERE category='textile'`)
     }
   } catch (e) {}
 
@@ -714,7 +940,7 @@ export function computeTaxes(hsCode: string, amount: number) {
   return { tariffRate, vatRate, exciseRate, tariff, vat, excise }
 }
 
-export async function getCustomsHeadersPaged(q: string, status: string, portCode: string, tradeMode: string, offset: number, limit: number) {
+export async function getCustomsHeadersPaged(q: string, status: string, portCode: string, tradeMode: string, offset: number, limit: number, hsChap?: string, hsHead?: string, hsSub?: string, onlyBadHs?: boolean, onlyMissingUnit?: boolean, onlyAbnormalQty?: boolean) {
   await ensureCustomsTables()
   const where: string[] = []
   const params: any = { $offset: offset, $limit: limit }
@@ -722,11 +948,32 @@ export async function getCustomsHeadersPaged(q: string, status: string, portCode
   if (status && status!=='all') { where.push(`status = $st`); params.$st = status }
   if (portCode && portCode!=='all') { where.push(`port_code = $pc`); params.$pc = portCode }
   if (tradeMode && tradeMode!=='all') { where.push(`trade_mode = $tm`); params.$tm = tradeMode }
+  if (hsChap && hsChap!=='all') {
+    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND substr(replace(ci.hs_code,'.',''),1,2)=$chap)`)
+    params.$chap = hsChap
+  }
+  if (hsHead && hsHead!=='all') {
+    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND substr(replace(ci.hs_code,'.',''),1,4)=$head)`)
+    params.$head = hsHead
+  }
+  if (hsSub && hsSub!=='all') {
+    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND replace(ci.hs_code,'.','')=$sub)`)
+    params.$sub = hsSub
+  }
+  if (onlyBadHs) {
+    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND length(replace(ci.hs_code,'.','')) < 8)`)
+  }
+  if (onlyMissingUnit) {
+    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND (ci.unit IS NULL OR ci.unit=''))`)
+  }
+  if (onlyAbnormalQty) {
+    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND (ci.qty IS NULL OR ci.qty<=0))`)
+  }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   return queryAll(`SELECT id, declaration_no as declarationNo, enterprise, consignor, consignee, port_code as portCode, trade_mode as tradeMode, currency, total_value as totalValue, gross_weight as grossWeight, net_weight as netWeight, packages, country_origin as countryOrigin, country_dest as countryDest, status, declare_date as declareDate, updated_at as updatedAt FROM customs_headers ${whereSql} ORDER BY declare_date DESC LIMIT $limit OFFSET $offset`, params)
 }
 
-export async function countCustomsHeaders(q: string, status: string, portCode: string, tradeMode: string) {
+export async function countCustomsHeaders(q: string, status: string, portCode: string, tradeMode: string, hsChap?: string, hsHead?: string, hsSub?: string, onlyBadHs?: boolean, onlyMissingUnit?: boolean, onlyAbnormalQty?: boolean) {
   await ensureCustomsTables()
   const where: string[] = []
   const params: any = {}
@@ -734,6 +981,12 @@ export async function countCustomsHeaders(q: string, status: string, portCode: s
   if (status && status!=='all') { where.push(`status = $st`); params.$st = status }
   if (portCode && portCode!=='all') { where.push(`port_code = $pc`); params.$pc = portCode }
   if (tradeMode && tradeMode!=='all') { where.push(`trade_mode = $tm`); params.$tm = tradeMode }
+  if (hsChap && hsChap!=='all') { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND substr(replace(ci.hs_code,'.',''),1,2)=$chap)`); params.$chap = hsChap }
+  if (hsHead && hsHead!=='all') { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND substr(replace(ci.hs_code,'.',''),1,4)=$head)`); params.$head = hsHead }
+  if (hsSub && hsSub!=='all') { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND replace(ci.hs_code,'.','')=$sub)`); params.$sub = hsSub }
+  if (onlyBadHs) { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND length(replace(hs_code,'.','')) < 8)`) }
+  if (onlyMissingUnit) { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND (ci.unit IS NULL OR ci.unit=''))`) }
+  if (onlyAbnormalQty) { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND (ci.qty IS NULL OR ci.qty<=0))`) }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const rows = await queryAll(`SELECT COUNT(*) as c FROM customs_headers ${whereSql}`, params)
   return rows[0]?.c || 0
@@ -742,6 +995,22 @@ export async function countCustomsHeaders(q: string, status: string, portCode: s
 export async function getCustomsItems(headerId: string) {
   await ensureCustomsTables()
   return queryAll(`SELECT id, header_id as headerId, line_no as lineNo, hs_code as hsCode, name, spec, unit, qty, unit_price as unitPrice, amount, origin_country as originCountry, tax_rate as taxRate, tariff, excise, vat FROM customs_items WHERE header_id=$hid ORDER BY line_no`,{ $hid: headerId })
+}
+
+export async function getHsHeadings(chapter?: string) {
+  const params: any = {}
+  const where = chapter ? `WHERE substr(replace(hs_code,'.',''),1,2)=$c` : ''
+  if (chapter) params.$c = chapter
+  const rows = await queryAll(`SELECT DISTINCT substr(replace(hs_code,'.',''),1,4) as head FROM customs_items ${where} ORDER BY head`, params)
+  return rows.map(r => String(r.head).padStart(4,'0'))
+}
+
+export async function getHsSubheadings(heading?: string) {
+  const params: any = {}
+  const where = heading ? `WHERE substr(replace(hs_code,'.',''),1,4)=$h AND length(replace(hs_code,'.',''))>=8` : `WHERE length(replace(hs_code,'.',''))>=8`
+  if (heading) params.$h = heading
+  const rows = await queryAll(`SELECT DISTINCT replace(hs_code,'.','') as sub FROM customs_items ${where} ORDER BY sub`, params)
+  return rows.map(r => String(r.sub).padStart(8,'0'))
 }
 
 export async function getDashboardStats() {
@@ -824,11 +1093,36 @@ export async function updateCustomsStatus(id: string, status: string) {
 }
 
 export async function getLogisticsData() {
-  return queryAll(`SELECT id, tracking_no as trackingNo, origin, destination, status, estimated_time as estimatedTime, actual_time as actualTime, efficiency, order_id as orderId FROM logistics ORDER BY id`)
+  return queryAll(`SELECT id, tracking_no as trackingNo, origin, destination, status, estimated_time as estimatedTime, actual_time as actualTime, efficiency, order_id as orderId, mode, etd, eta, atd, ata, bl_no as blNo, awb_no as awbNo, is_fcl as isFcl, freight_cost as freightCost, insurance_cost as insuranceCost FROM logistics ORDER BY id`)
 }
 
 export async function getPaymentMethods() {
   return queryAll(`SELECT method as name, volume, amount, success_rate as successRate, avg_time as avgTime FROM payments ORDER BY volume DESC`)
+}
+
+export async function getIncotermsList() {
+  const rows = await queryAll(`SELECT code FROM incoterms ORDER BY code`)
+  return rows.map(r => r.code)
+}
+
+export async function getTransportModes() {
+  return ['FCL','LCL','AIR','RAIL']
+}
+
+export async function getPorts() {
+  return queryAll(`SELECT code, name, country FROM ports ORDER BY name`)
+}
+
+export async function getCountries() {
+  return queryAll(`SELECT code, name FROM countries ORDER BY name`)
+}
+
+export async function getUnits() {
+  return queryAll(`SELECT code, name, factor FROM units ORDER BY name`)
+}
+
+export async function getCarriers() {
+  return queryAll(`SELECT id as code, name, type FROM carriers ORDER BY type, name`)
 }
 
 export async function getInventoryData() {
@@ -841,6 +1135,81 @@ export async function getAlgorithms() {
 
 export async function getBusinessModels() {
   return queryAll(`SELECT * FROM business_models`)
+}
+
+export async function getBusinessModelForOrder(orderId: string) {
+  const primary = await getOrderPrimaryHs(orderId)
+  const models = await getBusinessModels()
+  const chap = primary?.chapter || ''
+  let matched = null as any
+  for (const m of models) {
+    const chs = JSON.parse(m.chapters || '[]') as string[]
+    if (chap && chs.includes(chap)) { matched = m; break }
+  }
+  if (!matched) {
+    const [o] = await queryAll(`SELECT category FROM orders WHERE id=$id`,{ $id: orderId })
+    matched = models.find((x:any)=> x.category === (o?.category || '')) || null
+  }
+  return matched
+}
+
+export async function applyBusinessModel(orderId: string) {
+  const model = await getBusinessModelForOrder(orderId)
+  if (!model) return { applied: false, compliance: 0, messages: ['未匹配到业务模型'] }
+  const chapList = JSON.parse(model.chapters || '[]') as string[]
+  const [primary] = await queryAll(`SELECT substr(replace(ci.hs_code,'.',''),1,2) as chap, ci.hs_code as hs FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=$oid ORDER BY IFNULL(ci.amount,ci.qty*ci.unit_price) DESC LIMIT 1`,{ $oid: orderId })
+  const messages: string[] = []
+  let score = 90
+  if (primary?.chap && chapList.length && !chapList.includes(primary.chap)) { messages.push('HS章节与业务模型不匹配'); score -= 15 }
+  const items = await queryAll(`SELECT id, hs_code as hs, unit, qty, unit_price as up, amount, excise FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid)`,{ $oid: orderId })
+  if (model.category === 'beauty') {
+    for (const it of items) { if (!it.unit) { messages.push('美妆商品缺少计量单位'); score -= 5; break } }
+  } else if (model.category === 'wine') {
+    for (const it of items) {
+      const hs = String(it.hs||'').replace(/\./g,'')
+      if (hs.startsWith('22') && (!it.excise || Number(it.excise)===0)) {
+        const taxes = computeTaxes(it.hs, it.amount || (it.qty||0)*(it.up||0))
+        await exec(`UPDATE customs_items SET excise=$ex WHERE id=$id`,{ $ex: taxes.excise, $id: it.id })
+        messages.push('酒类消费税自动补全')
+      }
+    }
+  } else if (model.category === 'electronics') {
+    const missingOrigin = await queryAll(`SELECT COUNT(*) as c FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid) AND (origin_country IS NULL OR origin_country='')`,{ $oid: orderId })
+    if ((missingOrigin[0]?.c || 0) > 0) { messages.push('电子产品缺少原产国'); score -= 5 }
+  } else if (model.category === 'textile') {
+    const noSpec = await queryAll(`SELECT COUNT(*) as c FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid) AND (spec IS NULL OR spec='')`,{ $oid: orderId })
+    if ((noSpec[0]?.c || 0) > 0) { messages.push('纺织品缺少规格'); score -= 5 }
+  } else if (model.category === 'appliance') {
+    const settle = await getSettlementByOrder(orderId)
+    if (!settle || settle.status!=='completed') { messages.push('家电模型建议在结算完成后安排发运'); score -= 3 }
+  }
+  const badHs = await queryAll(`SELECT COUNT(*) as c FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid) AND length(replace(hs_code,'.','')) < 8`,{ $oid: orderId })
+  if ((badHs[0]?.c || 0) > 0) { messages.push('HS编码不完整'); score -= 6 }
+  const [orderRow] = await queryAll(`SELECT incoterms FROM orders WHERE id=$id`,{ $id: orderId })
+  const inc = orderRow?.incoterms || ''
+  const [lg] = await queryAll(`SELECT mode, is_fcl as fcl, insurance_cost as ins FROM logistics WHERE order_id=$oid ORDER BY id DESC LIMIT 1`,{ $oid: orderId })
+  const hasAwb = (await queryAll(`SELECT COUNT(*) as c FROM documents WHERE order_id=$oid AND type='AWB'`,{ $oid: orderId }))[0]?.c || 0
+  const hasBl = (await queryAll(`SELECT COUNT(*) as c FROM documents WHERE order_id=$oid AND type='BL'`,{ $oid: orderId }))[0]?.c || 0
+  if (inc==='CIF') { if (!lg || !(lg.ins || 0)) { messages.push('CIF缺少保险费用'); score -= 6 } }
+  if (inc==='FOB') {
+    const ocean = (lg?.mode==='FCL' || lg?.mode==='LCL' || typeof lg?.fcl==='number')
+    if (ocean && !hasBl) { messages.push('FOB需提单单证'); score -= 5 }
+  }
+  if (lg && lg.mode==='AIR' && !hasAwb) { messages.push('空运需AWB单证'); score -= 5 }
+  if (inc==='DDP') {
+    const agg = (await queryAll(`SELECT IFNULL(SUM(tariff),0) as tariff, IFNULL(SUM(vat),0) as vat, IFNULL(SUM(excise),0) as excise FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid)`,{ $oid: orderId }))[0] || { tariff:0, vat:0, excise:0 }
+    const taxZero = ((agg.tariff || 0) + (agg.vat || 0) + (agg.excise || 0)) <= 0
+    if (taxZero) { messages.push('DDP需完税入境'); score -= 8 }
+  }
+  if (inc==='EXW') {
+    const missingOriginAny = await queryAll(`SELECT COUNT(*) as c FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid) AND (origin_country IS NULL OR origin_country='')`,{ $oid: orderId })
+    if ((missingOriginAny[0]?.c || 0) > 0) { messages.push('EXW缺少原产国信息'); score -= 4 }
+  }
+  if (score < 0) score = 0
+  const [clr] = await queryAll(`SELECT id FROM customs_clearances WHERE order_id=$oid LIMIT 1`,{ $oid: orderId })
+  if (clr?.id) await exec(`UPDATE customs_clearances SET compliance=$cp WHERE id=$id`,{ $cp: score, $id: clr.id })
+  for (const m of messages) await exec(`INSERT INTO audit_logs(message,created_at) VALUES($m,$t)`,{ $m:`[Model] ${m}`, $t:new Date().toISOString() })
+  return { applied: true, compliance: score, messages }
 }
 
 export async function getAlgorithmRecommendations(orderId: string) {
@@ -904,6 +1273,7 @@ export async function upsertBusinessModel(model: {
   description: string,
   scenarios: string[],
   compliance: string[],
+  chapters?: string[],
   successRate: number,
   lastUpdated: string,
   maintainer: string
@@ -919,17 +1289,18 @@ export async function upsertBusinessModel(model: {
     description TEXT,
     scenarios TEXT,
     compliance TEXT,
+    chapters TEXT,
     successRate REAL,
     lastUpdated TEXT,
     maintainer TEXT
   )`)
-  await exec(`INSERT INTO business_models(id,name,category,version,status,enterprises,orders,description,scenarios,compliance,successRate,lastUpdated,maintainer)
-              VALUES($id,$n,$c,$v,$s,$e,$o,$d,$sc,$cp,$sr,$lu,$mt)
+  await exec(`INSERT INTO business_models(id,name,category,version,status,enterprises,orders,description,scenarios,compliance,chapters,successRate,lastUpdated,maintainer)
+              VALUES($id,$n,$c,$v,$s,$e,$o,$d,$sc,$cp,$ch,$sr,$lu,$mt)
               ON CONFLICT(id) DO UPDATE SET
                 name=$n, category=$c, version=$v, status=$s, enterprises=$e, orders=$o, description=$d,
-                scenarios=$sc, compliance=$cp, successRate=$sr, lastUpdated=$lu, maintainer=$mt`,{
+                scenarios=$sc, compliance=$cp, chapters=$ch, successRate=$sr, lastUpdated=$lu, maintainer=$mt`,{
     $id:model.id,$n:model.name,$c:model.category,$v:model.version,$s:model.status,$e:model.enterprises,$o:model.orders,
-    $d:model.description,$sc:JSON.stringify(model.scenarios),$cp:JSON.stringify(model.compliance),$sr:model.successRate,
+    $d:model.description,$sc:JSON.stringify(model.scenarios),$cp:JSON.stringify(model.compliance),$ch:JSON.stringify(model.chapters||[]),$sr:model.successRate,
     $lu:model.lastUpdated,$mt:model.maintainer
   })
 }
@@ -1025,6 +1396,34 @@ export async function pushTradeEvents(count: number) {
   for (const r of ids) {
     await exec(`UPDATE trade_stream SET ts=$t WHERE id=$id`,{ $t:new Date().toISOString(), $id:r.id })
   }
+}
+
+export async function getExchangeRate(base: string, quote: string) {
+  const r = (await queryAll(`SELECT rate FROM exchange_rates WHERE base=$b AND quote=$q`,{ $b:base, $q:quote }))[0]
+  return r?.rate || 1
+}
+
+export async function computeLandedCost(orderId: string) {
+  const items = await queryAll(`SELECT amount, tariff, excise, vat FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid)`,{ $oid: orderId })
+  let product = 0, tariff = 0, excise = 0, vat = 0
+  for (const it of items) { product += (it.amount || 0); tariff += (it.tariff || 0); excise += (it.excise || 0); vat += (it.vat || 0) }
+  const [hdr] = await queryAll(`SELECT currency FROM customs_headers WHERE order_id=$oid ORDER BY declare_date DESC LIMIT 1`,{ $oid: orderId })
+  const cur = hdr?.currency || 'CNY'
+  const rate = cur==='CNY' ? 1 : await getExchangeRate(cur, 'CNY')
+  const productCny = (product || 0) * (rate || 1)
+  const [log] = await queryAll(`SELECT freight_cost as freight, insurance_cost as ins FROM logistics WHERE order_id=$oid ORDER BY id DESC LIMIT 1`,{ $oid: orderId })
+  const freight = log?.freight || 0
+  const insurance = log?.ins || 0
+  const total = productCny + freight + insurance + tariff + excise + vat
+  return { product: productCny, freight, insurance, tariff, excise, vat, total }
+}
+
+export async function getDocuments(orderId: string) {
+  return queryAll(`SELECT id, type, number, issued_at as issuedAt, url, extra FROM documents WHERE order_id=$oid ORDER BY issued_at DESC`,{ $oid: orderId })
+}
+
+export async function getTrackEvents(logisticsId: string) {
+  return queryAll(`SELECT event, status, ts FROM track_events WHERE logistics_id=$lid ORDER BY ts`,{ $lid: logisticsId })
 }
 
 export async function consistencyCheck() {

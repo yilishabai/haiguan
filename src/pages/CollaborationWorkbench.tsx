@@ -19,6 +19,10 @@ export const CollaborationWorkbench: React.FC = () => {
   const [reco, setReco] = useState<any | null>(null)
   const [hsChapter, setHsChapter] = useState<'all'|'unclassified'|string>('all')
   const [chapters, setChapters] = useState<{ chap:string; name:string }[]>([])
+  const [incoterms, setIncoterms] = useState<'all'|'EXW'|'FOB'|'CIF'|'DDP'>('all')
+  const [transport, setTransport] = useState<'all'|'FCL'|'LCL'|'AIR'|'RAIL'>('all')
+  const [incotermsList, setIncotermsList] = useState<string[]>([])
+  const [transportList, setTransportList] = useState<string[]>([])
 
   const load = async () => {
     const where: string[] = []
@@ -34,6 +38,8 @@ export const CollaborationWorkbench: React.FC = () => {
         params.$chap = hsChapter
       }
     }
+    if (incoterms !== 'all') { where.push(`o.incoterms=$inc`); (params as any).$inc = incoterms }
+    if (transport !== 'all') { where.push(`EXISTS(SELECT 1 FROM logistics l WHERE l.order_id=o.id AND (l.mode=$tm OR (l.is_fcl=1 AND $tm='FCL') OR (l.is_fcl=0 AND $tm='LCL')))`); (params as any).$tm = transport }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
     const rows = await queryAll(`
       SELECT o.id as id, o.order_number as orderNo, o.enterprise as ent, o.category as cat,
@@ -72,6 +78,8 @@ export const CollaborationWorkbench: React.FC = () => {
     setMethods(pm.map((x:any)=>({ name:x.name, successRate:x.successRate, avgTime:x.avgTime })))
     const chs = await getHsChapters()
     setChapters(chs)
+    setIncotermsList(await getIncotermsList() as any)
+    setTransportList(await getTransportModes() as any)
   }
 
   useEffect(() => {
@@ -81,7 +89,7 @@ export const CollaborationWorkbench: React.FC = () => {
   useEffect(() => {
     const id = setTimeout(() => { void load() }, 0)
     return () => clearTimeout(id)
-  }, [q, category, onlyAbnormal, hsChapter, page, pageSize])
+  }, [q, category, onlyAbnormal, hsChapter, incoterms, transport, page, pageSize])
   useEffect(() => {
     const run = async () => {
       const orderId = tasks.find(t=>t.id===selectedTask)?.orderId
@@ -119,7 +127,7 @@ export const CollaborationWorkbench: React.FC = () => {
       </div>
 
       <div className="hud-panel p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <input value={q} onChange={(e)=>{ setPage(1); setQ(e.target.value) }} placeholder="订单号/企业" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
           <select value={category} onChange={(e)=>{ setPage(1); setCategory(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
             <option value="all">全部品类</option>
@@ -135,6 +143,14 @@ export const CollaborationWorkbench: React.FC = () => {
             {chapters.map(c=> (
               <option key={c.chap} value={c.chap}>海关章节: {c.chap} {c.name}</option>
             ))}
+          </select>
+          <select value={incoterms} onChange={(e)=>{ setPage(1); setIncoterms(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+            <option value="all">Incoterms: 全部</option>
+            {incotermsList.map(x=> (<option key={x} value={x}>Incoterms: {x}</option>))}
+          </select>
+          <select value={transport} onChange={(e)=>{ setPage(1); setTransport(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+            <option value="all">运输方式: 全部</option>
+            {transportList.map(x=> (<option key={x} value={x}>运输方式: {x}</option>))}
           </select>
           <label className="inline-flex items-center gap-2 text-sm text-gray-300">
             <input type="checkbox" checked={onlyAbnormal} onChange={(e)=>{ setPage(1); setOnlyAbnormal(e.target.checked) }} /> 仅显示异常
@@ -249,6 +265,9 @@ export const CollaborationWorkbench: React.FC = () => {
                     <div className="text-white font-semibold">{tasks.find(t=>t.id===selectedTask)?.route || '—'}</div>
                     <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs border border-yellow-500/30 text-yellow-400">
                       <Truck className="w-3 h-3 mr-1" /> {(tasks.find(t=>t.id===selectedTask)?.logisticsStatus)||'pickup'}
+                    </div>
+                    <div className="mt-2 text-xs text-gray-400">
+                      ETA/ETD 以订单为准
                     </div>
                     {reco?.processControl && (
                       <div className="mt-2 text-xs text-gray-400">下一步: {reco.processControl.nextLogisticsStep}</div>

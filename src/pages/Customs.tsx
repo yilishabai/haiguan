@@ -1,13 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { HudPanel, GlowButton } from '../components/ui/HudPanel'
-import { getCustomsHeadersPaged, countCustomsHeaders, getCustomsItems, upsertCustomsHeader, insertCustomsItem, computeTaxes, ensureCustomsTables } from '../lib/sqlite'
+import { getCustomsHeadersPaged, countCustomsHeaders, getCustomsItems, upsertCustomsHeader, insertCustomsItem, computeTaxes, ensureCustomsTables, getHsChapters, getHsHeadings, getHsSubheadings, getPorts } from '../lib/sqlite'
 import * as XLSX from 'xlsx'
 
 export const Customs: React.FC = () => {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<'all'|'declared'|'inspecting'|'cleared'|'held'>('all')
-  const [port, setPort] = useState('')
+  const [port, setPort] = useState('all')
+  const [ports, setPorts] = useState<{ code:string; name:string; country:string }[]>([])
   const [mode, setMode] = useState<'all'|'general'|'processing'|'bonded'|'express'>('all')
+  const [hsChapter, setHsChapter] = useState<'all'|'unclassified'|string>('all')
+  const [hsHead, setHsHead] = useState<'all'|string>('all')
+  const [hsSub, setHsSub] = useState<'all'|string>('all')
+  const [chapters, setChapters] = useState<{ chap:string; name:string }[]>([])
+  const [headings, setHeadings] = useState<string[]>([])
+  const [subs, setSubs] = useState<string[]>([])
+  const [hsQuick, setHsQuick] = useState('')
+  const [onlyBadHs, setOnlyBadHs] = useState(false)
+  const [onlyMissingUnit, setOnlyMissingUnit] = useState(false)
+  const [onlyAbnormalQty, setOnlyAbnormalQty] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
@@ -18,20 +29,39 @@ export const Customs: React.FC = () => {
   const [file, setFile] = useState<File | null>(null)
 
   useEffect(() => { void ensureCustomsTables() }, [])
+  useEffect(() => { const id = setTimeout(async () => { setPorts(await getPorts() as any) }, 0); return () => clearTimeout(id) }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const list = await getCustomsHeadersPaged(q, status, port, mode, (page-1)*pageSize, pageSize)
+      const list = await getCustomsHeadersPaged(q, status, port, mode, (page-1)*pageSize, pageSize, hsChapter==='unclassified'?'':hsChapter, hsHead, hsSub, onlyBadHs, onlyMissingUnit, onlyAbnormalQty)
       setRows(list)
-      const cnt = await countCustomsHeaders(q, status, port, mode)
+      const cnt = await countCustomsHeaders(q, status, port, mode, hsChapter==='unclassified'?'':hsChapter, hsHead, hsSub, onlyBadHs, onlyMissingUnit, onlyAbnormalQty)
       setTotal(cnt)
     } finally {
       setLoading(false)
     }
-  }, [q, status, port, mode, page, pageSize])
+  }, [q, status, port, mode, hsChapter, hsHead, hsSub, page, pageSize])
 
   useEffect(() => { const id = setTimeout(() => { void load() }, 0); return () => clearTimeout(id) }, [load])
+  useEffect(() => {
+    const id = setTimeout(async () => { setChapters(await getHsChapters()) }, 0)
+    return () => clearTimeout(id)
+  }, [])
+  useEffect(() => {
+    const id = setTimeout(async () => {
+      if (hsChapter && hsChapter!=='all' && hsChapter!=='unclassified') setHeadings(await getHsHeadings(hsChapter)); else setHeadings([])
+      setHsHead('all'); setHsSub('all')
+    }, 0)
+    return () => clearTimeout(id)
+  }, [hsChapter])
+  useEffect(() => {
+    const id = setTimeout(async () => {
+      if (hsHead && hsHead!=='all') setSubs(await getHsSubheadings(hsHead)); else setSubs([])
+      setHsSub('all')
+    }, 0)
+    return () => clearTimeout(id)
+  }, [hsHead])
 
   useEffect(() => {
     const run = async () => {
@@ -160,7 +190,7 @@ export const Customs: React.FC = () => {
       </div>
 
       <div className="hud-panel p-3">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-10 gap-2">
           <input value={q} onChange={(e)=>{ setPage(1); setQ(e.target.value) }} placeholder="报关单号/企业/收发货人" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白" />
           <select value={status} onChange={(e)=>{ setPage(1); setStatus(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白">
             <option value="all">全部状态</option>
@@ -169,7 +199,10 @@ export const Customs: React.FC = () => {
             <option value="cleared">已放行</option>
             <option value="held">异常拦截</option>
           </select>
-          <input value={port} onChange={(e)=>{ setPage(1); setPort(e.target.value) }} placeholder="口岸代码" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白" />
+          <select value={port} onChange={(e)=>{ setPage(1); setPort(e.target.value) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白">
+            <option value="all">口岸代码</option>
+            {ports.map(p=> (<option key={p.code} value={p.code}>{p.code} {p.name}</option>))}
+          </select>
           <select value={mode} onChange={(e)=>{ setPage(1); setMode(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白">
             <option value="all">贸易方式</option>
             <option value="general">一般贸易</option>
@@ -177,11 +210,28 @@ export const Customs: React.FC = () => {
             <option value="bonded">保税</option>
             <option value="express">快件</option>
           </select>
+          <select value={hsChapter} onChange={(e)=>{ setPage(1); setHsChapter(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白">
+            <option value="all">章</option>
+            <option value="unclassified">未归类</option>
+            {chapters.map(c=> (<option key={c.chap} value={c.chap}>{c.chap} {c.name}</option>))}
+          </select>
+          <select value={hsHead} onChange={(e)=>{ setPage(1); setHsHead(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白" disabled={!headings.length}>
+            <option value="all">品目</option>
+            {headings.map(h=> (<option key={h} value={h}>{h}</option>))}
+          </select>
+          <select value={hsSub} onChange={(e)=>{ setPage(1); setHsSub(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白" disabled={!subs.length}>
+            <option value="all">子目</option>
+            {subs.map(s=> (<option key={s} value={s}>{s}</option>))}
+          </select>
+          <input value={hsQuick} onChange={(e)=>{ const v = (e.target.value||'').replace(/\D/g,''); setPage(1); setHsQuick(v); if (v.length>=8) { setHsSub(v.slice(0,8)); setHsHead('all'); setHsChapter('all') } else if (v.length>=4) { setHsHead(v.slice(0,4)); setHsChapter('all'); setHsSub('all') } else if (v.length>=2) { setHsChapter(v.slice(0,2)); setHsHead('all'); setHsSub('all') } else { setHsChapter('all'); setHsHead('all'); setHsSub('all') } }} placeholder="HS快速筛选 2/4/8位" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白" />
           <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白">
             <option value={10}>10/页</option>
             <option value={20}>20/页</option>
             <option value={50}>50/页</option>
           </select>
+          <label className="inline-flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" checked={onlyBadHs} onChange={(e)=>{ setPage(1); setOnlyBadHs(e.target.checked) }} /> 仅不完整HS</label>
+          <label className="inline-flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" checked={onlyMissingUnit} onChange={(e)=>{ setPage(1); setOnlyMissingUnit(e.target.checked) }} /> 仅缺计量单位</label>
+          <label className="inline-flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" checked={onlyAbnormalQty} onChange={(e)=>{ setPage(1); setOnlyAbnormalQty(e.target.checked) }} /> 仅数量异常</label>
         </div>
       </div>
 
@@ -232,6 +282,16 @@ export const Customs: React.FC = () => {
                       {warnings.slice(0,4).map((w,i)=>(<div key={i}>⚠️ {w}</div>))}
                     </div>
                   )}
+                  <div className="mt-3 flex items-center justify-end">
+                    <GlowButton size="sm" onClick={async ()=>{
+                      if (!selected) return
+                      const data = items.map(it=>({ 行号: it.lineNo, HS编码: it.hsCode, 名称: it.name, 规格: it.spec, 单位: it.unit, 数量: it.qty, 单价: it.unitPrice, 金额: it.amount, 关税: it.tariff, 增值税: it.vat, 消费税: it.excise }))
+                      const ws = XLSX.utils.json_to_sheet(data)
+                      const wb = XLSX.utils.book_new()
+                      XLSX.utils.book_append_sheet(wb, ws, 'CustomsItems')
+                      XLSX.writeFile(wb, `${selected.declarationNo || 'customs'}.xlsx`)
+                    }}>导出Excel</GlowButton>
+                  </div>
                 </div>
               </div>
               <div className="mt-3">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HudPanel, GlowButton } from '../components/ui/HudPanel';
-import { queryAll, runDataQualityScan, getBusinessModels, getHsChapters } from '../lib/sqlite';
+import { queryAll, runDataQualityScan, getBusinessModels, getHsChapters, getOrderPrimaryHs, getBusinessModelForOrder, applyBusinessModel, getDocuments, computeLandedCost } from '../lib/sqlite';
 import { 
   LineChart, Line, ResponsiveContainer, YAxis 
 } from 'recharts';
@@ -39,27 +39,37 @@ const ProductPassport = ({ order }: { order?: { id?: string; order_number?: stri
   const [model, setModel] = useState<any | null>(null);
   const [hs, setHs] = useState<{ hsCode:string; chapter:string } | null>(null);
   const [chapName, setChapName] = useState<string>('');
+  const [applying, setApplying] = useState(false);
+  const [inc, setInc] = useState<string>('');
+  const [eta, setEta] = useState<string>('');
+  const [etd, setEtd] = useState<string>('');
+  const [docs, setDocs] = useState<any[]>([]);
+  const [landed, setLanded] = useState<{ product:number; freight:number; insurance:number; tariff:number; excise:number; vat:number; total:number } | null>(null);
   useEffect(() => {
     const load = async () => {
-      if (order?.category) {
-        const ms = await getBusinessModels();
-        const m = ms.find((x:any)=> x.category === order.category) || null;
-        setModel(m);
-      } else {
-        setModel(null);
-      }
+      if (order?.id) {
+        const m = await getBusinessModelForOrder(order.id);
+        setModel(m || null);
+      } else { setModel(null); }
       if (order?.id) {
         const primary = await getOrderPrimaryHs(order.id);
         setHs(primary?.hsCode ? primary : null);
         const chs = await getHsChapters();
         const name = chs.find((c:any)=> c.chap === (primary?.chapter || ''))?.name || '';
         setChapName(name);
+        const [o] = await queryAll(`SELECT incoterms FROM orders WHERE id=$id`,{ $id: order.id });
+        setInc(o?.incoterms || '');
+        const [lg] = await queryAll(`SELECT eta, etd FROM logistics WHERE order_id=$oid ORDER BY id DESC LIMIT 1`,{ $oid: order.id });
+        setEta(lg?.eta || ''); setEtd(lg?.etd || '');
+        setDocs(await getDocuments(order.id));
+        setLanded(await computeLandedCost(order.id));
       } else {
         setHs(null); setChapName('');
+        setInc(''); setEta(''); setEtd('');
       }
     };
-    load();
-  }, [order?.category, order?.id]);
+    void load();
+  }, [order?.id, order?.category]);
   return (
   <HudPanel className="h-full flex flex-col" title="Product Passport" subtitle="商品数字护照">
     <div className="flex-1 flex flex-col items-center p-6 space-y-6">
@@ -107,6 +117,23 @@ const ProductPassport = ({ order }: { order?: { id?: string; order_number?: stri
           <div className="text-emerald-100 text-sm">{hs?.chapter ? `${hs.chapter} ${chapName || ''}` : '—'}</div>
         </div>
 
+        <div className="group p-3 rounded-lg bg-white/5 border border-white/10">
+          <div className="text-gray-500 text-xs mb-1">Incoterms</div>
+          <div className="text-amber-100 font-semibold tracking-wider">{inc || '—'}</div>
+        </div>
+
+        <div className="group p-3 rounded-lg bg-white/5 border border-white/10">
+          <div className="text-gray-500 text-xs mb-1">ETA / ETD</div>
+          <div className="text-blue-100">{etd || '—'} → {eta || '—'}</div>
+        </div>
+
+        {landed && (
+          <div className="group p-3 rounded-lg bg-white/5 border border-white/10">
+            <div className="text-gray-500 text-xs mb-1">到岸成本</div>
+            <div className="text-xs text-white">产品 {landed.product.toFixed(2)} + 运费 {landed.freight.toFixed(2)} + 保险 {landed.insurance.toFixed(2)} + 关税 {landed.tariff.toFixed(2)} + 消费税 {landed.excise.toFixed(2)} + 增值税 {landed.vat.toFixed(2)} = 合计 {landed.total.toFixed(2)}</div>
+          </div>
+        )}
+
         <div className="group p-3 rounded-lg bg-white/5 border border-white/10 hover:border-purple-500/30 transition-colors">
           <div className="text-gray-500 text-xs mb-1">Registration Status</div>
           <div className="flex items-center gap-2 text-purple-200">
@@ -125,12 +152,33 @@ const ProductPassport = ({ order }: { order?: { id?: string; order_number?: stri
               <div className="text-gray-500 text-xs mb-1">合规要求</div>
               <div className="text-xs text-white">{JSON.parse(model.compliance||'[]').join('、')}</div>
             </div>
+            <div className="flex justify-end">
+              <GlowButton size="sm" loading={applying} onClick={async ()=>{
+                if (!order?.id) return; setApplying(true);
+                try { await applyBusinessModel(order.id); } finally { setApplying(false); }
+              }}>应用业务模型检查</GlowButton>
+            </div>
+            {docs.length>0 && (
+              <div className="group p-3 rounded-lg bg-white/5 border border-white/10">
+                <div className="text-gray-500 text-xs mb-1">单证清单</div>
+                <div className="text-xs text-white space-y-1">
+                  {docs.map(d=> (
+                    <div key={d.id} className="flex items-center justify-between">
+                      <span>{d.type}</span>
+                      <a className="font-mono text-amber-100 hover:underline" href={d.url} target="_blank" rel="noreferrer">{d.number}</a>
+                      <span className="text-gray-400">{(d.issuedAt||'').slice(0,10)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
   </HudPanel>
-)};
+  );
+};
 
 const TimelineNode = ({ event, isLast }: { event: TimelineEvent; isLast: boolean }) => (
   <div className="relative pl-8 pb-12 last:pb-0">
