@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import * as echarts from 'echarts'
-import worldData from 'echarts-countries-js/world-x.json'
+import worldUrl from 'echarts-countries-js/new-world.geojson?url'
 
 interface LogisticsMapProps {
   height?: number | string
@@ -20,7 +20,22 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
       const chart = echarts.init(ref.current, undefined, { renderer: 'canvas' })
       chartRef.current = chart
 
-      try { echarts.registerMap('world', worldData as any) } catch (e) {}
+      try {
+        const providers = [
+          'https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/map/json/world.json',
+          worldUrl
+        ]
+        for (const url of providers) {
+          try {
+            const resp = await fetch(url)
+            if (resp.ok) {
+              const world = await resp.json()
+              echarts.registerMap('world', world)
+              break
+            }
+          } catch (_) {}
+        }
+      } catch (e) {}
 
       const china = { name: 'China', coord: [116.4074, 39.9042] }
       const shanghai = { name: 'Shanghai Port', coord: [121.4917, 31.2333] }

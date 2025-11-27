@@ -474,6 +474,14 @@ function migrate(db: Database) {
   } catch (e) {}
 
   try {
+    const info = db.exec(`PRAGMA table_info(settlements)`)
+    const cols = (info[0]?.values || []).map((row:any[]) => row[1])
+    if (!cols.includes('payment_method')) {
+      db.run(`ALTER TABLE settlements ADD COLUMN payment_method TEXT`)
+    }
+  } catch (e) {}
+
+  try {
     // Add more business models to cover more categories
     const bm = db.exec(`SELECT id FROM business_models WHERE id IN ('electronics-model','textile-model')`)[0]?.values || []
     const existing = bm.map((r:any[]) => r[0])
@@ -796,6 +804,17 @@ export async function updateSettlementStatus(id: string, status: string) {
   await exec(`UPDATE settlements SET status=$st WHERE id=$id`, { $st: status, $id: id })
 }
 
+export async function getSettlementByOrder(orderId: string) {
+  const rows = await queryAll(`SELECT id, status, settlement_time as settlementTime, risk_level as riskLevel, payment_method as paymentMethod FROM settlements WHERE order_id=$oid LIMIT 1`, { $oid: orderId })
+  return rows[0] || null
+}
+
+export async function completeSettlement(orderId: string, method: string) {
+  const r = (await queryAll(`SELECT avg_time as t, success_rate as sr FROM payments WHERE method=$m LIMIT 1`, { $m: method }))[0] || {}
+  const t = r.t || 2.0
+  await exec(`UPDATE settlements SET status='completed', settlement_time=$t, risk_level='low', payment_method=$m WHERE order_id=$oid`, { $t: t, $m: method, $oid: orderId })
+}
+
 export async function getCustomsClearances() {
   return queryAll(`SELECT id, declaration_no as declarationNo, product, enterprise, status, clearance_time as clearanceTime, compliance, risk_score as riskScore FROM customs_clearances ORDER BY id`)
 }
@@ -822,6 +841,56 @@ export async function getAlgorithms() {
 
 export async function getBusinessModels() {
   return queryAll(`SELECT * FROM business_models`)
+}
+
+export async function getAlgorithmRecommendations(orderId: string) {
+  const [o] = await queryAll(`SELECT id, order_number as orderNo, enterprise, category, amount, currency, status FROM orders WHERE id=$id`, { $id: orderId })
+  if (!o) return null
+  const invMap: Record<string,string> = { beauty: '化妆品', electronics: '电子产品', textile: '服装', wine: '食品', appliance: '机械设备' }
+  const invName = invMap[o.category] || '电子产品'
+  const inv = (await queryAll(`SELECT current, target, production, sales, efficiency FROM inventory WHERE name=$n`, { $n: invName }))[0] || { current: 0, target: 0, production: 0, sales: 0, efficiency: 0 }
+  const stockGap = (inv.target || 0) - (inv.current || 0)
+  const reallocate = stockGap > 0 ? Math.min(stockGap, Math.round((o.amount || 0) / 1000)) : 0
+  const demand = Math.max(0, (inv.sales || 0) - (inv.production || 0))
+  const capacityPlan = demand > 0 ? Math.ceil(demand * 0.6) : 0
+  const settle = (await queryAll(`SELECT method, success_rate as sr, avg_time as t FROM payments ORDER BY amount DESC LIMIT 1`))[0] || { method: '电汇', sr: 98.5, t: 1.8 }
+  const customs = (await queryAll(`SELECT status FROM customs_clearances WHERE order_id=$oid LIMIT 1`, { $oid: orderId }))[0] || { status: 'declared' }
+  const nextLog = (await queryAll(`SELECT status, origin, destination FROM logistics WHERE order_id=$oid ORDER BY id DESC LIMIT 1`, { $oid: orderId }))[0] || { status: 'pickup' }
+  const nextMap: Record<string,string> = { pickup:'transit', transit:'delivery', delivery:'completed', customs:'delivery', completed:'completed' }
+  const nextStep = nextMap[nextLog.status] || 'transit'
+  return {
+    payment: { bestMethod: settle.method, successRate: settle.sr, etaHours: settle.t },
+    inventory: { action: reallocate > 0 ? 'reallocate' : 'stable', quantity: reallocate },
+    productionSales: { planIncrease: capacityPlan },
+    processControl: { customsStatus: customs.status, nextLogisticsStep: nextStep },
+    decision: { summary: `建议使用${settle.method}完成结算，库存调拨${reallocate}，产能增加${capacityPlan}` }
+  }
+}
+
+export async function getHsChapters() {
+  const rows = await queryAll(`SELECT DISTINCT substr(replace(hs_code,'.',''),1,2) as chap FROM customs_items WHERE hs_code IS NOT NULL AND hs_code!='' ORDER BY chap`)
+  const present = rows.map(r=> String(r.chap).padStart(2,'0')).filter(Boolean)
+  const common = ['01','02','21','22','33','39','48','61','62','64','70','72','73','76','84','85','87','90','94','95']
+  const names: Record<string,string> = {
+    '01':'活动物', '02':'肉及食用杂碎', '21':'杂项食品', '22':'饮料及酒', '33':'精油香料及化妆品',
+    '39':'塑料及制品', '48':'纸及纸板及制品', '61':'针织或钩编的服装', '62':'非针织服装', '64':'鞋靴',
+    '70':'玻璃及其制品', '72':'钢铁', '73':'钢铁制品', '76':'铝及其制品', '84':'机械器具', '85':'电机电气设备',
+    '87':'车辆及其零件', '90':'光学、测量、医疗仪器', '94':'家具、寝具等', '95':'玩具、游戏及体育用品'
+  }
+  const set = Array.from(new Set([...present, ...common])).sort()
+  return set.map(ch => ({ chap: ch, name: names[ch] || `第${ch}章` }))
+}
+
+export async function getOrderPrimaryHs(orderId: string) {
+  const rows = await queryAll(`
+    SELECT ci.hs_code as hs, IFNULL(ci.amount, ci.qty*ci.unit_price) as amt
+    FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id
+    WHERE ch.order_id=$oid AND ci.hs_code IS NOT NULL AND ci.hs_code!=''
+    ORDER BY amt DESC LIMIT 1
+  `, { $oid: orderId })
+  const hs = rows[0]?.hs || ''
+  const chap = hs ? (hs.replace(/\./g,'').slice(0,2) || '') : ''
+  return { hsCode: hs, chapter: chap }
 }
 
 export async function upsertBusinessModel(model: {
@@ -968,41 +1037,19 @@ export async function consistencyCheck() {
   await exec(`INSERT OR REPLACE INTO system_metrics(key,value) VALUES('data_sync_delay',$v)`,{ $v: score })
   return score
 }
-  try {
-    const info = db.exec(`PRAGMA table_info(business_models)`)
-    const cols = (info[0]?.values || []).map((row:any[]) => row[1])
-    if (!cols.includes('code')) {
-      db.run(`ALTER TABLE business_models ADD COLUMN code TEXT`)
-      db.run(`UPDATE business_models SET code=$code WHERE id='beauty-model'`,{ $code:`def beauty_model(order):
-  # NMPA 合规性 + 过敏成分校验
-  check_nmpa(order)
-  validate_ingredients(order)
-  return plan(order)` })
-      db.run(`UPDATE business_models SET code=$code WHERE id='wine-model'`,{ $code:`def wine_model(order):
-  # 酒类许可证 + 年龄验证 + 税率
-  check_license(order)
-  verify_age(order)
-  compute_tax(order)
-  return plan(order)` })
-      db.run(`UPDATE business_models SET code=$code WHERE id='appliance-model'`,{ $code:`def appliance_model(order):
-  # 3C认证 + 能效 + 售后策略
-  verify_3c(order)
-  check_energy_label(order)
-  configure_service(order)
-  return plan(order)` })
-    }
-  } catch (e) {}
 
-  try {
-    // Seed ports_congestion if empty
-    const cnt = db.exec(`SELECT COUNT(*) FROM ports_congestion`)[0]?.values?.[0]?.[0] || 0
-    if (cnt === 0) {
-      ;[
-        { port:'洛杉矶', idx: 62.5 },
-        { port:'鹿特丹', idx: 48.2 },
-        { port:'大阪', idx: 35.7 }
-      ].forEach(p=>{
-        db.run(`INSERT INTO ports_congestion(port,idx,updated_at) VALUES($p,$i,$t)`,{ $p:p.port, $i:p.idx, $t:new Date().toISOString() })
-      })
-    }
-  } catch (e) {}
+export async function runDataQualityScan() {
+  const issues: string[] = []
+  const badHs = await queryAll(`SELECT name FROM customs_items WHERE length(replace(hs_code,'.','')) < 8`)
+  for (const r of badHs) issues.push(`HS编码不完整: ${r.name}`)
+  const missingUnit = await queryAll(`SELECT name FROM customs_items WHERE unit IS NULL OR unit=''`)
+  for (const r of missingUnit) issues.push(`缺少计量单位: ${r.name}`)
+  const clearedPendingPay = await queryAll(`SELECT o.order_number as no FROM orders o WHERE EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id AND c.status='cleared') AND EXISTS(SELECT 1 FROM settlements s WHERE s.order_id=o.id AND s.status!='completed')`)
+  for (const r of clearedPendingPay) issues.push(`通关已完成但未结算: 订单 ${r.no}`)
+  const highAmt = await queryAll(`SELECT id, amount FROM trade_stream WHERE amount > 50000 ORDER BY amount DESC LIMIT 50`)
+  for (const r of highAmt) issues.push(`交易金额异常: 事件 ${r.id} 金额 ${Math.round(r.amount*100)/100}`)
+  for (const m of issues.slice(0, 50)) {
+    await exec(`INSERT INTO audit_logs(message,created_at) VALUES($m,$t)`, { $m: `[Risk] ${m}`, $t: new Date().toISOString() })
+  }
+  return issues
+}

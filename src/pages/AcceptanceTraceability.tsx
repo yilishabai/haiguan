@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HudPanel, GlowButton } from '../components/ui/HudPanel';
-import { queryAll } from '../lib/sqlite';
+import { queryAll, runDataQualityScan, getBusinessModels, getHsChapters } from '../lib/sqlite';
 import { 
   LineChart, Line, ResponsiveContainer, YAxis 
 } from 'recharts';
@@ -35,7 +35,32 @@ const fetchAuditLogs = async () => {
 
 // --- Components ---
 
-const ProductPassport = ({ order }: { order?: { order_number?: string; enterprise?: string; category?: string } }) => (
+const ProductPassport = ({ order }: { order?: { id?: string; order_number?: string; enterprise?: string; category?: string } }) => {
+  const [model, setModel] = useState<any | null>(null);
+  const [hs, setHs] = useState<{ hsCode:string; chapter:string } | null>(null);
+  const [chapName, setChapName] = useState<string>('');
+  useEffect(() => {
+    const load = async () => {
+      if (order?.category) {
+        const ms = await getBusinessModels();
+        const m = ms.find((x:any)=> x.category === order.category) || null;
+        setModel(m);
+      } else {
+        setModel(null);
+      }
+      if (order?.id) {
+        const primary = await getOrderPrimaryHs(order.id);
+        setHs(primary?.hsCode ? primary : null);
+        const chs = await getHsChapters();
+        const name = chs.find((c:any)=> c.chap === (primary?.chapter || ''))?.name || '';
+        setChapName(name);
+      } else {
+        setHs(null); setChapName('');
+      }
+    };
+    load();
+  }, [order?.category, order?.id]);
+  return (
   <HudPanel className="h-full flex flex-col" title="Product Passport" subtitle="商品数字护照">
     <div className="flex-1 flex flex-col items-center p-6 space-y-6">
       {/* Product Image Placeholder */}
@@ -72,11 +97,14 @@ const ProductPassport = ({ order }: { order?: { order_number?: string; enterpris
         <div className="group p-3 rounded-lg bg-white/5 border border-white/10 hover:border-emerald-500/30 transition-colors">
           <div className="text-gray-500 text-xs mb-1">HS Code</div>
           <div className="flex justify-between items-center">
-            <span className="text-emerald-100">{order ? (order.category==='beauty'?'3304.9900':order.category==='wine'?'2204.2100':'8537.1000') : '3304.9900'}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-              Auto Match
-            </span>
+            <span className="text-emerald-100">{hs?.hsCode || '—'}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Auto Match</span>
           </div>
+        </div>
+
+        <div className="group p-3 rounded-lg bg-white/5 border border-white/10">
+          <div className="text-gray-500 text-xs mb-1">HS 章</div>
+          <div className="text-emerald-100 text-sm">{hs?.chapter ? `${hs.chapter} ${chapName || ''}` : '—'}</div>
         </div>
 
         <div className="group p-3 rounded-lg bg-white/5 border border-white/10 hover:border-purple-500/30 transition-colors">
@@ -86,10 +114,23 @@ const ProductPassport = ({ order }: { order?: { order_number?: string; enterpris
             {order ? (order.category==='beauty'?'NMPA Filed':'CFDA/CIQ') : 'NMPA Filed'}
           </div>
         </div>
+
+        {model && (
+          <div className="w-full space-y-3">
+            <div className="group p-3 rounded-lg bg-white/5 border border-white/10">
+              <div className="text-gray-500 text-xs mb-1">模型场景</div>
+              <div className="text-xs text-white">{JSON.parse(model.scenarios||'[]').join('、')}</div>
+            </div>
+            <div className="group p-3 rounded-lg bg-white/5 border border-white/10">
+              <div className="text-gray-500 text-xs mb-1">合规要求</div>
+              <div className="text-xs text-white">{JSON.parse(model.compliance||'[]').join('、')}</div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   </HudPanel>
-);
+)};
 
 const TimelineNode = ({ event, isLast }: { event: TimelineEvent; isLast: boolean }) => (
   <div className="relative pl-8 pb-12 last:pb-0">
@@ -214,6 +255,7 @@ const TraceabilityTimeline = ({ orderId }: { orderId?: string }) => {
 const AuditLog = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     const load = async () => { setLogs(await fetchAuditLogs()); };
@@ -223,6 +265,9 @@ const AuditLog = () => {
 
   return (
     <HudPanel className="h-full flex flex-col" title="Audit Log" subtitle="智能验算日志">
+      <div className="p-2 flex items-center justify-end">
+        <GlowButton size="sm" loading={scanning} onClick={async ()=>{ setScanning(true); try { await runDataQualityScan(); setLogs(await fetchAuditLogs()); } finally { setScanning(false); } }}>数据质量探查</GlowButton>
+      </div>
       <div 
         ref={scrollRef}
         className="flex-1 overflow-hidden p-4 font-mono text-xs space-y-3 bg-black/20"
@@ -259,6 +304,8 @@ export const AcceptanceTraceability: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [category, setCategory] = useState<'all'|'beauty'|'electronics'|'wine'|'textile'|'appliance'>('all');
   const [clearanceFilter, setClearanceFilter] = useState<'all'|'cleared'|'held'>('all');
+  const [hsChapter, setHsChapter] = useState<'all'|'unclassified'|string>('all');
+  const [chapters, setChapters] = useState<{ chap:string; name:string }[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
@@ -274,6 +321,14 @@ export const AcceptanceTraceability: React.FC = () => {
         const st = clearanceFilter === 'cleared' ? 'cleared' : 'held';
         where.push(`EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=orders.id AND c.status='${st}')`);
       }
+      if (hsChapter !== 'all') {
+        if (hsChapter === 'unclassified') {
+          where.push(`NOT EXISTS(SELECT 1 FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=orders.id AND length(replace(ci.hs_code,'.',''))>=2)`);
+        } else {
+          where.push(`EXISTS(SELECT 1 FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=orders.id AND substr(replace(ci.hs_code,'.',''),1,2)=$chap)`);
+          params.$chap = hsChapter;
+        }
+      }
       const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
       const rows = await queryAll(`SELECT id, order_number, enterprise, category FROM orders ${whereSql} ORDER BY created_at DESC LIMIT $limit OFFSET $offset`, params);
       setResults(rows);
@@ -284,10 +339,15 @@ export const AcceptanceTraceability: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    const loadChapters = async () => { setChapters(await getHsChapters()); };
+    loadChapters();
+  }, []);
+
   return (
     <div className="h-[calc(100vh-100px)] min-h-[600px] w-full p-2">
       <div className="hud-panel p-3 mb-3">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-2">
           <input value={query} onChange={(e)=>{ setPage(1); setQuery(e.target.value) }} placeholder="检索商品/企业/订单号" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
           <select value={category} onChange={(e)=>{ setPage(1); setCategory(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
             <option value="all">全部品类</option>
@@ -301,6 +361,11 @@ export const AcceptanceTraceability: React.FC = () => {
             <option value="all">通关状态: 全部</option>
             <option value="cleared">通关状态: 已放行</option>
             <option value="held">通关状态: 异常拦截</option>
+          </select>
+          <select value={hsChapter} onChange={(e)=>{ setPage(1); setHsChapter(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+            <option value="all">海关章节: 全部</option>
+            <option value="unclassified">海关章节: 未归类</option>
+            {chapters.map(c=> (<option key={c.chap} value={c.chap}>海关章节: {c.chap} {c.name}</option>))}
           </select>
           <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
             <option value={10}>10/页</option>

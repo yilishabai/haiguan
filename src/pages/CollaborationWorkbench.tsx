@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { CreditCard, Truck } from 'lucide-react'
-import { HudPanel, StatusBadge } from '../components/ui/HudPanel'
-import { queryAll } from '../lib/sqlite'
+import { HudPanel, StatusBadge, GlowButton } from '../components/ui/HudPanel'
+import { queryAll, getPaymentMethods, completeSettlement, getAlgorithmRecommendations, getHsChapters } from '../lib/sqlite'
 
 export const CollaborationWorkbench: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<string | null>(null)
   const [copilotOpen, setCopilotOpen] = useState(true)
-  const [tasks, setTasks] = useState<{ id:string; orderId:string; title:string; route:string; tags:string[]; payStatus?:string; customsStatus?:string; logisticsStatus?:string }[]>([])
+  const [tasks, setTasks] = useState<{ id:string; orderId:string; title:string; route:string; tags:string[]; payStatus?:string; customsStatus?:string; logisticsStatus?:string; hsChap?:string; hsHead?:string }[]>([])
   const [metrics, setMetrics] = useState<{ pending:number; customsAmount:number; blocked:number }>({ pending:0, customsAmount:0, blocked:0 })
   const [q, setQ] = useState('')
   const [category, setCategory] = useState<'all'|'beauty'|'electronics'|'wine'|'textile'|'appliance'>('all')
@@ -14,6 +14,11 @@ export const CollaborationWorkbench: React.FC = () => {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [total, setTotal] = useState(0)
+  const [methods, setMethods] = useState<{ name:string; successRate:number; avgTime:number }[]>([])
+  const [selectedMethod, setSelectedMethod] = useState<string>('')
+  const [reco, setReco] = useState<any | null>(null)
+  const [hsChapter, setHsChapter] = useState<'all'|'unclassified'|string>('all')
+  const [chapters, setChapters] = useState<{ chap:string; name:string }[]>([])
 
   const load = async () => {
     const where: string[] = []
@@ -21,13 +26,23 @@ export const CollaborationWorkbench: React.FC = () => {
     if (q) { where.push(`(o.order_number LIKE $q OR o.enterprise LIKE $q)`); params.$q = `%${q}%` }
     if (category !== 'all') { where.push(`o.category = $cat`); params.$cat = category }
     if (onlyAbnormal) { where.push(`EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id AND c.status='held')`) }
+    if (hsChapter !== 'all') {
+      if (hsChapter === 'unclassified') {
+        where.push(`NOT EXISTS(SELECT 1 FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=o.id AND length(replace(ci.hs_code,'.',''))>=2)`)
+      } else {
+        where.push(`EXISTS(SELECT 1 FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=o.id AND substr(replace(ci.hs_code,'.',''),1,2)=$chap)`)
+        params.$chap = hsChapter
+      }
+    }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
     const rows = await queryAll(`
       SELECT o.id as id, o.order_number as orderNo, o.enterprise as ent, o.category as cat,
              (SELECT status FROM settlements s WHERE s.order_id=o.id LIMIT 1) as payStatus,
              (SELECT status FROM customs_clearances c WHERE c.order_id=o.id LIMIT 1) as customsStatus,
              (SELECT origin||' -> '||destination FROM logistics l WHERE l.order_id=o.id ORDER BY l.id DESC LIMIT 1) as route,
-             (SELECT status FROM logistics l WHERE l.order_id=o.id ORDER BY l.id DESC LIMIT 1) as logisticsStatus
+             (SELECT status FROM logistics l WHERE l.order_id=o.id ORDER BY l.id DESC LIMIT 1) as logisticsStatus,
+             (SELECT substr(replace(ci.hs_code,'.',''),1,2) FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=o.id ORDER BY IFNULL(ci.amount,ci.qty*ci.unit_price) DESC LIMIT 1) as hsChap,
+             (SELECT substr(replace(ci.hs_code,'.',''),1,4) FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=o.id ORDER BY IFNULL(ci.amount,ci.qty*ci.unit_price) DESC LIMIT 1) as hsHead
       FROM orders o
       ${whereSql}
       ORDER BY o.created_at DESC LIMIT $limit OFFSET $offset
@@ -39,9 +54,9 @@ export const CollaborationWorkbench: React.FC = () => {
       if (r.payStatus==='processing') tags.push('支付处理中')
       if (r.payStatus==='pending') tags.push('待支付')
       if (!tags.length) tags.push('处理中')
-      const catTag = r.cat==='beauty'?'美妆':r.cat==='wine'?'酒水':r.cat==='appliance'?'家电':r.cat==='electronics'?'电子':'纺织'
-      tags.push(catTag)
-      return { id: r.orderNo, orderId: r.id, title: r.ent, route: r.route || '🇫🇷 -> 🇨🇳', tags, payStatus: r.payStatus, customsStatus: r.customsStatus, logisticsStatus: r.logisticsStatus }
+      if (r.hsChap) tags.push(`HS章:${String(r.hsChap).padStart(2,'0')}`)
+      if (r.hsHead) tags.push(`HS品目:${String(r.hsHead).padStart(4,'0')}`)
+      return { id: r.orderNo, orderId: r.id, title: r.ent, route: r.route || '🇫🇷 -> 🇨🇳', tags, payStatus: r.payStatus, customsStatus: r.customsStatus, logisticsStatus: r.logisticsStatus, hsChap: r.hsChap, hsHead: r.hsHead }
     })
     setTasks(t)
     const countRow = await queryAll(`SELECT COUNT(*) as c FROM orders o ${whereSql}`, params)
@@ -53,6 +68,10 @@ export const CollaborationWorkbench: React.FC = () => {
         (SELECT COUNT(*) FROM customs_clearances WHERE status='held') as blocked
     `)
     setMetrics({ pending: mrows[0]?.pending || 0, customsAmount: Math.round((mrows[0]?.customsAmount || 0)/1000)/1000, blocked: mrows[0]?.blocked || 0 })
+    const pm = await getPaymentMethods()
+    setMethods(pm.map((x:any)=>({ name:x.name, successRate:x.successRate, avgTime:x.avgTime })))
+    const chs = await getHsChapters()
+    setChapters(chs)
   }
 
   useEffect(() => {
@@ -62,7 +81,18 @@ export const CollaborationWorkbench: React.FC = () => {
   useEffect(() => {
     const id = setTimeout(() => { void load() }, 0)
     return () => clearTimeout(id)
-  }, [q, category, onlyAbnormal, page, pageSize])
+  }, [q, category, onlyAbnormal, hsChapter, page, pageSize])
+  useEffect(() => {
+    const run = async () => {
+      const orderId = tasks.find(t=>t.id===selectedTask)?.orderId
+      if (!orderId) { setReco(null); return }
+      const r = await getAlgorithmRecommendations(orderId)
+      setReco(r)
+      setSelectedMethod(r?.payment?.bestMethod || '')
+    }
+    const id = setTimeout(() => { void run() }, 0)
+    return () => clearTimeout(id)
+  }, [selectedTask, tasks])
 
   return (
     <div className="space-y-6">
@@ -98,6 +128,13 @@ export const CollaborationWorkbench: React.FC = () => {
             <option value="wine">酒水</option>
             <option value="textile">纺织</option>
             <option value="appliance">家电</option>
+          </select>
+          <select value={hsChapter} onChange={(e)=>{ setPage(1); setHsChapter(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+            <option value="all">海关章节: 全部</option>
+            <option value="unclassified">海关章节: 未归类</option>
+            {chapters.map(c=> (
+              <option key={c.chap} value={c.chap}>海关章节: {c.chap} {c.name}</option>
+            ))}
           </select>
           <label className="inline-flex items-center gap-2 text-sm text-gray-300">
             <input type="checkbox" checked={onlyAbnormal} onChange={(e)=>{ setPage(1); setOnlyAbnormal(e.target.checked) }} /> 仅显示异常
@@ -160,6 +197,21 @@ export const CollaborationWorkbench: React.FC = () => {
                     <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs border border-cyber-cyan/30 text-cyber-cyan">
                       <CreditCard className="w-3 h-3 mr-1" /> 汇率锁定 7.12
                     </div>
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <select value={selectedMethod} onChange={(e)=>setSelectedMethod(e.target.value)} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs">
+                        <option value="">选择支付方式</option>
+                        {methods.map(m=> (<option key={m.name} value={m.name}>{m.name} · 成功率{m.successRate}% · {m.avgTime}h</option>))}
+                      </select>
+                      <GlowButton size="sm" onClick={async ()=>{
+                        const orderId = tasks.find(t=>t.id===selectedTask)?.orderId
+                        if (!orderId || !selectedMethod) return
+                        await completeSettlement(orderId, selectedMethod)
+                        await load()
+                      }}>完成结算</GlowButton>
+                      {reco?.payment && (
+                        <div className="text-xs text-gray-400 text-left">建议: {reco.payment.bestMethod} · {reco.payment.successRate}% · {reco.payment.etaHours}h</div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 {/* 通关（高亮） */}
@@ -171,8 +223,23 @@ export const CollaborationWorkbench: React.FC = () => {
                     </div>
                     <div className="mt-2 text-xs text-emerald-green">HS编码 匹配成功</div>
                     <div className="text-xs text-emerald-green">成分与备案校验通过</div>
+                    {reco?.productionSales && (
+                      <div className="mt-2 text-xs text-gray-400">产能建议 +{reco.productionSales.planIncrease}</div>
+                    )}
                     <div className="mt-2 px-2 py-1 rounded bg-cyber-cyan/10 text-cyber-cyan text-xs inline-flex items-center">🤖 智能生成报关单</div>
-                    <div className="mt-3 w-24 h-24 border border-cyber-cyan/30 rounded-full animate-pulse"></div>
+                    {(() => {
+                      const st = tasks.find(t=>t.id===selectedTask)?.customsStatus || ''
+                      const prog = st==='cleared' ? 100 : st==='inspecting' ? 65 : st==='declared' ? 30 : st==='held' ? 20 : 0
+                      const deg = Math.max(0, Math.min(360, Math.round(prog*3.6)))
+                      return (
+                        <div className="mt-3 relative w-24 h-24">
+                          <div className="absolute inset-0 rounded-full" style={{ background: `conic-gradient(#22d3ee ${deg}deg, rgba(255,255,255,0.08) 0deg)` }}></div>
+                          <div className="absolute inset-2 rounded-full border border-cyber-cyan/30 bg-slate-900/60 flex items-center justify-center">
+                            <span className="digital-display text-cyber-cyan text-sm">{prog}%</span>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
                 {/* 物流 */}
@@ -183,6 +250,9 @@ export const CollaborationWorkbench: React.FC = () => {
                     <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs border border-yellow-500/30 text-yellow-400">
                       <Truck className="w-3 h-3 mr-1" /> {(tasks.find(t=>t.id===selectedTask)?.logisticsStatus)||'pickup'}
                     </div>
+                    {reco?.processControl && (
+                      <div className="mt-2 text-xs text-gray-400">下一步: {reco.processControl.nextLogisticsStep}</div>
+                    )}
                   </div>
                 </div>
                 {/* 入库（灰度） */}
@@ -220,6 +290,17 @@ export const CollaborationWorkbench: React.FC = () => {
             <div className="text-sm text-emerald-green">{((tasks.find(t=>t.id===selectedTask)?.customsStatus)==='cleared')?'通关已完成，可安排配送': '申报材料校验通过，可继续提单'}</div>
             <div className="text-xs text-gray-400 mt-2">建议：{((tasks.find(t=>t.id===selectedTask)?.payStatus)==='pending')?'尽快完成支付以加速流程':'保持物流在途监控与异常预警'}</div>
           </div>
+          {reco && (
+            <div className="hud-panel p-3">
+              <div className="text-xs text-gray-400 mb-2">算法建议</div>
+              <div className="space-y-1 text-xs text-white">
+                <div>支付: {reco.payment?.bestMethod} · {reco.payment?.successRate}%</div>
+                <div>库存: {reco.inventory?.action==='reallocate' ? `调拨 ${reco.inventory?.quantity}` : '稳定'}</div>
+                <div>产销: 增加产能 {reco.productionSales?.planIncrease}</div>
+                <div>流程: 下一步 {reco.processControl?.nextLogisticsStep}</div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
