@@ -9,7 +9,8 @@ import {
   Menu,
   X,
   Settings,
-  Bell
+  Bell,
+  Users
 } from 'lucide-react';
 import { StatusBadge } from '../ui/HudPanel';
 import { getSettings } from '../../lib/sqlite';
@@ -43,6 +44,12 @@ const menuItems = [
     label: '数字溯源与验收', 
     path: '/acceptance',
     description: '溯源验收单与指标核算'
+  },
+  { 
+    icon: Users, 
+    label: '参与企业', 
+    path: '/enterprises',
+    description: '备案企业查询与接入'
   },
   { 
     icon: Settings, 

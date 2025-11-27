@@ -24,7 +24,7 @@ import {
   X,
   FileCode
 } from 'lucide-react';
-import { getAlgorithms, getBusinessModels, updateAlgorithmCode } from '../lib/sqlite';
+import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel } from '../lib/sqlite';
 
 // 算法库数据
 const algorithmLibrary = [
@@ -176,15 +176,29 @@ const businessModels = [
   }
 ];
 
-// 算法性能数据
-const algorithmPerformance = [
-  { name: '准确率', value: 91.2, fullMark: 100 },
-  { name: '性能', value: 87.4, fullMark: 100 },
-  { name: '稳定性', value: 93.8, fullMark: 100 },
-  { name: '可扩展性', value: 85.1, fullMark: 100 },
-  { name: '易用性', value: 89.6, fullMark: 100 },
-  { name: '维护性', value: 92.3, fullMark: 100 }
-];
+const computeAlgorithmPerformance = (list: any[]) => {
+  const total = list.length || 1;
+  const avgAcc = list.reduce((s,x)=>s+(x.accuracy||0),0)/total;
+  const avgPerf = list.reduce((s,x)=>s+(x.performance||0),0)/total;
+  const activeRate = Math.round((list.filter(x=>x.status==='active').length/total)*1000)/10;
+  const avgFeatures = list.reduce((s,x)=>s+((x.features||[]).length),0)/total;
+  const maxUsage = Math.max(1, ...list.map(x=>x.usage||0));
+  const avgUsageRatio = list.reduce((s,x)=>s+((x.usage||0)/maxUsage),0)/total*100;
+  const avgDaysSinceUpdate = list.reduce((s,x)=>{
+    const d = new Date(x.lastUpdated||Date.now());
+    const days = Math.max(0, Math.round((Date.now()-d.getTime())/(1000*60*60*24)));
+    return s+days;
+  },0)/total;
+  const maintainability = Math.max(0, 100 - Math.min(100, avgDaysSinceUpdate*2));
+  return [
+    { name: '准确率', value: Math.round(avgAcc*10)/10, fullMark: 100 },
+    { name: '性能', value: Math.round(avgPerf*10)/10, fullMark: 100 },
+    { name: '稳定性', value: Math.round(activeRate*10)/10, fullMark: 100 },
+    { name: '可扩展性', value: Math.min(100, Math.round(avgFeatures*20*10)/10), fullMark: 100 },
+    { name: '易用性', value: Math.round(avgUsageRatio*10)/10, fullMark: 100 },
+    { name: '维护性', value: Math.round(maintainability*10)/10, fullMark: 100 }
+  ];
+};
 
 const categoryColors = {
   optimization: '#00F0FF',
@@ -320,10 +334,12 @@ export const Capabilities: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'algorithms' | 'models'>('algorithms');
   const [algorithms, setAlgorithms] = useState<any[]>([]);
   const [models, setModels] = useState<any[]>([]);
-  const [selectedAlgorithm, setSelectedAlgorithm] = useState<any>(algorithmLibrary[0]);
-  const [selectedModel, setSelectedModel] = useState<any>(businessModels[0]);
+  const [selectedAlgorithm, setSelectedAlgorithm] = useState<any | null>(null);
+  const [selectedModel, setSelectedModel] = useState<any | null>(null);
   const [algPage, setAlgPage] = useState(1);
   const [algPageSize, setAlgPageSize] = useState(5);
+  const [showModelModal, setShowModelModal] = useState(false);
+  const [modelForm, setModelForm] = useState<any>({ id:'', name:'', category:'beauty', version:'v1.0.0', status:'active', enterprises:0, orders:0, description:'', scenarios:'', compliance:'', successRate:90, lastUpdated:new Date().toISOString().slice(0,10), maintainer:'' });
   
   // Right Panel State
   const [rightPanelTab, setRightPanelTab] = useState<'overview' | 'code' | 'logs'>('overview');
@@ -349,12 +365,67 @@ export const Capabilities: React.FC = () => {
       const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance) }));
       setAlgorithms(aa);
       setModels(mm);
-      setSelectedAlgorithm(aa[0] || selectedAlgorithm);
-      setSelectedModel(mm[0] || selectedModel);
+      setSelectedAlgorithm(aa[0] || null);
+      setSelectedModel(mm[0] || null);
       setAlgPage(1);
     };
     load();
   }, []);
+
+  const openNewModel = () => {
+    setModelForm({ id:'bm-'+Date.now(), name:'', category:'beauty', version:'v1.0.0', status:'active', enterprises:0, orders:0, description:'', scenarios:'', compliance:'', successRate:90, lastUpdated:new Date().toISOString().slice(0,10), maintainer:'' })
+    setShowModelModal(true)
+  }
+  const openEditModel = () => {
+    if (!selectedModel) return
+    setModelForm({
+      id:selectedModel.id,
+      name:selectedModel.name,
+      category:selectedModel.category,
+      version:selectedModel.version,
+      status:selectedModel.status,
+      enterprises:selectedModel.enterprises,
+      orders:selectedModel.orders,
+      description:selectedModel.description,
+      scenarios:(selectedModel.scenarios||[]).join(','),
+      compliance:(selectedModel.compliance||[]).join(','),
+      successRate:selectedModel.successRate,
+      lastUpdated:selectedModel.lastUpdated,
+      maintainer:selectedModel.maintainer
+    })
+    setShowModelModal(true)
+  }
+  const saveModel = async () => {
+    const payload = {
+      id:modelForm.id,
+      name:modelForm.name,
+      category:modelForm.category,
+      version:modelForm.version,
+      status:modelForm.status,
+      enterprises:parseInt(modelForm.enterprises||0),
+      orders:parseInt(modelForm.orders||0),
+      description:modelForm.description||'',
+      scenarios:(modelForm.scenarios||'').split(',').map((s:string)=>s.trim()).filter(Boolean),
+      compliance:(modelForm.compliance||'').split(',').map((s:string)=>s.trim()).filter(Boolean),
+      successRate:parseFloat(modelForm.successRate||0),
+      lastUpdated:modelForm.lastUpdated||new Date().toISOString().slice(0,10),
+      maintainer:modelForm.maintainer||''
+    }
+    await upsertBusinessModel(payload as any)
+    const m = await getBusinessModels();
+    const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance) }));
+    setModels(mm)
+    setSelectedModel(mm.find((x:any)=>x.id===payload.id) || mm[0] || null)
+    setShowModelModal(false)
+  }
+  const removeModel = async () => {
+    if (!selectedModel?.id) return
+    await deleteBusinessModel(selectedModel.id)
+    const m = await getBusinessModels();
+    const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance) }));
+    setModels(mm)
+    setSelectedModel(mm[0] || null)
+  }
 
   const handleRunTest = () => {
     setIsTestRunning(true);
@@ -455,7 +526,7 @@ export const Capabilities: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <DataCard
               title="总算法数"
-              value={(algorithms.length || algorithmLibrary.length)}
+              value={algorithms.length}
               unit="个"
               status="active"
             >
@@ -464,7 +535,7 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="活跃算法"
-              value={(algorithms.length ? algorithms : algorithmLibrary).filter((a: any) => a.status === 'active').length}
+              value={algorithms.filter((a: any) => a.status === 'active').length}
               unit="个"
               status="active"
             >
@@ -473,7 +544,7 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="平均准确率"
-              value={(algorithms.length ? (algorithms.reduce((sum, a) => sum + a.accuracy, 0) / algorithms.length) : (algorithmLibrary.reduce((sum, a) => sum + a.accuracy, 0) / algorithmLibrary.length)).toFixed(1)}
+              value={(algorithms.length ? (algorithms.reduce((sum, a) => sum + a.accuracy, 0) / algorithms.length) : 0).toFixed(1)}
               unit="%"
               status="active"
             >
@@ -482,7 +553,7 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="总调用次数"
-              value={(algorithms.length ? algorithms : algorithmLibrary).reduce((sum: number, a: any) => sum + a.usage, 0)}
+              value={algorithms.reduce((sum: number, a: any) => sum + a.usage, 0)}
               unit="次"
               status="active"
             >
@@ -491,7 +562,7 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="开发中"
-              value={(algorithms.length ? algorithms : algorithmLibrary).filter((a: any) => a.status === 'development').length}
+              value={algorithms.filter((a: any) => a.status === 'development').length}
               unit="个"
               status="warning"
             >
@@ -505,7 +576,7 @@ export const Capabilities: React.FC = () => {
               <HudPanel title="算法库管理" subtitle="核心算法列表与状态">
                 <div className="space-y-3">
                   {(() => {
-                    const list = algorithms.length ? algorithms : algorithmLibrary;
+                    const list = algorithms;
                     const totalPages = Math.max(1, Math.ceil(list.length / algPageSize));
                     const page = Math.min(algPage, totalPages);
                     const start = (page - 1) * algPageSize;
@@ -515,7 +586,7 @@ export const Capabilities: React.FC = () => {
                     <div
                       key={algorithm.id}
                       className={`p-4 rounded-lg border cursor-pointer transition-all duration-200 ${
-                        selectedAlgorithm.id === algorithm.id
+                        selectedAlgorithm && selectedAlgorithm.id === algorithm.id
                           ? 'bg-cyber-cyan/10 border-cyber-cyan/50'
                           : 'bg-slate-800/50 border-slate-700 hover:border-slate-600'
                       }`}
@@ -601,7 +672,7 @@ export const Capabilities: React.FC = () => {
               <HudPanel className="h-full flex flex-col">
                 {/* Header with Title and Tabs */}
                 <div className="mb-4">
-                  <h3 className="hud-title mb-1">{selectedAlgorithm.name}</h3>
+                  <h3 className="hud-title mb-1">{selectedAlgorithm ? selectedAlgorithm.name : '未选择算法'}</h3>
                   <div className="flex items-center gap-1 border-b border-slate-700 pb-0">
                     <button
                       onClick={() => setRightPanelTab('overview')}
@@ -643,12 +714,12 @@ export const Capabilities: React.FC = () => {
                       <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
                         <div className="flex items-center justify-between mb-4">
                           <h4 className="text-sm font-medium text-white">模型指标</h4>
-                          <StatusBadge status={selectedAlgorithm.status === 'active' ? 'active' : 'processing'}>
-                            {selectedAlgorithm.status}
+                          <StatusBadge status={selectedAlgorithm && selectedAlgorithm.status === 'active' ? 'active' : 'processing'}>
+                            {selectedAlgorithm ? selectedAlgorithm.status : ''}
                           </StatusBadge>
                         </div>
                         <div className="flex items-center justify-center py-2">
-                           <GaugeChart value={selectedAlgorithm.accuracy} />
+                           {selectedAlgorithm && <GaugeChart value={selectedAlgorithm.accuracy} />}
                         </div>
                       </div>
 
@@ -656,19 +727,19 @@ export const Capabilities: React.FC = () => {
                          <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
                               <span className="text-gray-500 block mb-1">Version</span>
-                              <span className="text-white font-mono">{selectedAlgorithm.version}</span>
+                              <span className="text-white font-mono">{selectedAlgorithm?.version}</span>
                             </div>
                             <div>
                               <span className="text-gray-500 block mb-1">Author</span>
-                              <span className="text-white">{selectedAlgorithm.author}</span>
+                              <span className="text-white">{selectedAlgorithm?.author}</span>
                             </div>
                             <div>
                               <span className="text-gray-500 block mb-1">Updated</span>
-                              <span className="text-white">{selectedAlgorithm.lastUpdated}</span>
+                              <span className="text-white">{selectedAlgorithm?.lastUpdated}</span>
                             </div>
                             <div>
                               <span className="text-gray-500 block mb-1">Usage</span>
-                              <span className="text-white font-mono">{selectedAlgorithm.usage.toLocaleString()}</span>
+                              <span className="text-white font-mono">{selectedAlgorithm ? selectedAlgorithm.usage.toLocaleString() : 0}</span>
                             </div>
                          </div>
                       </div>
@@ -680,8 +751,8 @@ export const Capabilities: React.FC = () => {
                       {/* Editor */}
                       <div className="flex-1 bg-[#1e1e1e] rounded-t-lg border border-slate-700 overflow-hidden font-mono text-xs relative">
                         <textarea
-                          value={selectedAlgorithm.code || ''}
-                          onChange={(e)=>setSelectedAlgorithm((prev:any)=>({ ...prev, code: e.target.value }))}
+                          value={selectedAlgorithm?.code || ''}
+                          onChange={(e)=>setSelectedAlgorithm((prev:any)=> prev ? ({ ...prev, code: e.target.value }) : prev)}
                           className="w-full h-full bg-transparent text-gray-300 p-3 outline-none resize-none"
                         />
                       </div>
@@ -789,7 +860,7 @@ export const Capabilities: React.FC = () => {
               <div>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart data={algorithmPerformance}>
+                    <RadarChart data={computeAlgorithmPerformance(algorithms)}>
                       <PolarGrid stroke="rgba(148, 163, 184, 0.3)" />
                       <PolarAngleAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 12 }} />
                       <PolarRadiusAxis 
@@ -811,7 +882,7 @@ export const Capabilities: React.FC = () => {
               </div>
               <div className="space-y-4">
                 <h4 className="text-lg font-semibold text-white">性能详情</h4>
-                {algorithmPerformance.map((item, index) => (
+                {computeAlgorithmPerformance(algorithms).map((item, index) => (
                   <div key={index} className="flex items-center justify-between">
                     <span className="text-gray-300">{item.name}</span>
                     <div className="flex items-center space-x-2">
@@ -839,7 +910,7 @@ export const Capabilities: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <DataCard
               title="总模型数"
-              value={(models.length || businessModels.length)}
+              value={models.length}
               unit="个"
               status="active"
             >
@@ -848,7 +919,7 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="服务企业"
-              value={(models.length ? models : businessModels).reduce((sum: number, m: any) => sum + m.enterprises, 0)}
+              value={models.reduce((sum: number, m: any) => sum + m.enterprises, 0)}
               unit="家"
               status="active"
             >
@@ -857,7 +928,7 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="累计订单"
-              value={(models.length ? models : businessModels).reduce((sum: number, m: any) => sum + m.orders, 0)}
+              value={models.reduce((sum: number, m: any) => sum + m.orders, 0)}
               unit="单"
               status="active"
             >
@@ -866,7 +937,7 @@ export const Capabilities: React.FC = () => {
 
             <DataCard
               title="平均成功率"
-              value={(models.length ? (models.reduce((sum: number, m: any) => sum + m.successRate, 0) / models.length) : (businessModels.reduce((sum, m) => sum + m.successRate, 0) / businessModels.length)).toFixed(1)}
+              value={(models.length ? (models.reduce((sum: number, m: any) => sum + m.successRate, 0) / models.length) : 0).toFixed(1)}
               unit="%"
               status="active"
             >
@@ -878,8 +949,12 @@ export const Capabilities: React.FC = () => {
             {/* 业务模型列表 */}
             <div className="lg:col-span-2">
               <HudPanel title="业务模型库" subtitle="各品类业务逻辑模型">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-gray-400">模型列表</div>
+                  <GlowButton size="sm" onClick={openNewModel}>新增模型</GlowButton>
+                </div>
                 <div className="space-y-3">
-                  {(models.length ? models : businessModels).map((model: any) => (
+                  {models.map((model: any) => (
                     <div
                       key={model.id}
                       className={`p-4 rounded-lg border cursor-pointer transition-all duration-200 ${
@@ -899,7 +974,7 @@ export const Capabilities: React.FC = () => {
                             <p className="text-xs text-gray-400">{model.description}</p>
                           </div>
                         </div>
-                        <StatusBadge status="active">{model.status}</StatusBadge>
+                        <StatusBadge status={model.status === 'active' ? 'active' : 'processing'}>{model.status}</StatusBadge>
                       </div>
 
                       <div className="grid grid-cols-3 gap-4 text-sm mb-3">
@@ -934,15 +1009,15 @@ export const Capabilities: React.FC = () => {
             <div>
               <HudPanel className="h-full flex flex-col">
                 <div className="mb-4 pb-4 border-b border-slate-700">
-                  <h3 className="hud-title mb-1">{selectedModel.name}</h3>
-                  <StatusBadge status="active">{selectedModel.status}</StatusBadge>
+                  <h3 className="hud-title mb-1">{selectedModel ? selectedModel.name : '未选择模型'}</h3>
+                  <StatusBadge status={selectedModel && selectedModel.status === 'active' ? 'active' : 'processing'}>{selectedModel ? selectedModel.status : ''}</StatusBadge>
                 </div>
                 
                 <div className="space-y-6 overflow-y-auto pr-2 custom-scrollbar">
                   <div>
                     <h4 className="text-sm font-medium text-gray-400 mb-2">应用场景</h4>
                     <div className="flex flex-wrap gap-2">
-                      {selectedModel.scenarios.map((tag: string, i: number) => (
+                      {selectedModel?.scenarios?.map((tag: string, i: number) => (
                         <span key={i} className="px-2 py-1 bg-slate-700/50 text-xs rounded text-cyber-cyan border border-slate-600">
                           {tag}
                         </span>
@@ -953,7 +1028,7 @@ export const Capabilities: React.FC = () => {
                   <div>
                     <h4 className="text-sm font-medium text-gray-400 mb-2">合规要求</h4>
                     <div className="space-y-2">
-                      {selectedModel.compliance.map((item: string, i: number) => (
+                      {selectedModel?.compliance?.map((item: string, i: number) => (
                         <div key={i} className="flex items-center text-sm text-gray-300">
                           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2" />
                           {item}
@@ -967,29 +1042,62 @@ export const Capabilities: React.FC = () => {
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">服务企业</span>
-                        <span className="text-white font-mono">{selectedModel.enterprises}</span>
+                        <span className="text-white font-mono">{selectedModel ? selectedModel.enterprises : 0}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">累计订单</span>
-                        <span className="text-white font-mono">{selectedModel.orders}</span>
+                        <span className="text-white font-mono">{selectedModel ? selectedModel.orders : 0}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">成功率</span>
-                        <span className="text-emerald-400 font-mono">{selectedModel.successRate}%</span>
+                        <span className="text-emerald-400 font-mono">{selectedModel ? selectedModel.successRate : 0}%</span>
                       </div>
                     </div>
                   </div>
                   
-                  <div className="pt-4 border-t border-slate-700">
-                     <button className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm transition-colors flex items-center justify-center gap-2">
-                        <FileText size={14} />
-                        查看完整模型文档
-                     </button>
+                  <div className="pt-4 border-t border-slate-700 flex items-center gap-2">
+                     <GlowButton size="sm" onClick={openEditModel}><Edit size={14} className="mr-2" />编辑</GlowButton>
+                     <GlowButton size="sm" variant="secondary" onClick={removeModel}><Trash2 size={14} className="mr-2" />删除</GlowButton>
                   </div>
                 </div>
               </HudPanel>
             </div>
           </div>
+          {showModelModal && (
+            <div className="fixed inset-0 bg黑/60 flex items-center justify-center z-50">
+              <div className="hud-panel p-4 w-[720px]">
+                <div className="text-white font-medium mb-3">{modelForm?.id ? '编辑模型' : '新增模型'}</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <input value={modelForm.name} onChange={(e)=>setModelForm((f:any)=>({ ...f, name:e.target.value }))} placeholder="模型名称" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
+                  <select value={modelForm.category} onChange={(e)=>setModelForm((f:any)=>({ ...f, category:e.target.value }))} className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+                    <option value="beauty">美妆</option>
+                    <option value="wine">酒水</option>
+                    <option value="appliance">家电</option>
+                    <option value="electronics">电子</option>
+                    <option value="textile">纺织</option>
+                  </select>
+                  <input value={modelForm.version} onChange={(e)=>setModelForm((f:any)=>({ ...f, version:e.target.value }))} placeholder="版本" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
+                  <select value={modelForm.status} onChange={(e)=>setModelForm((f:any)=>({ ...f, status:e.target.value }))} className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+                    <option value="active">active</option>
+                    <option value="development">development</option>
+                    <option value="testing">testing</option>
+                  </select>
+                  <input value={modelForm.enterprises} onChange={(e)=>setModelForm((f:any)=>({ ...f, enterprises:e.target.value }))} placeholder="服务企业数" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
+                  <input value={modelForm.orders} onChange={(e)=>setModelForm((f:any)=>({ ...f, orders:e.target.value }))} placeholder="累计订单数" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
+                  <input value={modelForm.successRate} onChange={(e)=>setModelForm((f:any)=>({ ...f, successRate:e.target.value }))} placeholder="成功率%" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
+                  <input value={modelForm.maintainer} onChange={(e)=>setModelForm((f:any)=>({ ...f, maintainer:e.target.value }))} placeholder="维护团队" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
+                  <input value={modelForm.lastUpdated} onChange={(e)=>setModelForm((f:any)=>({ ...f, lastUpdated:e.target.value }))} placeholder="最近更新(YYYY-MM-DD)" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
+                  <textarea value={modelForm.description} onChange={(e)=>setModelForm((f:any)=>({ ...f, description:e.target.value }))} placeholder="描述" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white col-span-2" />
+                  <input value={modelForm.scenarios} onChange={(e)=>setModelForm((f:any)=>({ ...f, scenarios:e.target.value }))} placeholder="适用场景(逗号分隔)" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white col-span-2" />
+                  <input value={modelForm.compliance} onChange={(e)=>setModelForm((f:any)=>({ ...f, compliance:e.target.value }))} placeholder="合规要求(逗号分隔)" className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white col-span-2" />
+                </div>
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  <GlowButton variant="secondary" onClick={()=>setShowModelModal(false)}>取消</GlowButton>
+                  <GlowButton onClick={saveModel}>保存</GlowButton>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

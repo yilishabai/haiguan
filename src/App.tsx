@@ -10,6 +10,7 @@ import { getSettings, upsertSetting } from './lib/sqlite';
 const Capabilities = React.lazy(() => import('./pages/Capabilities').then(module => ({ default: module.Capabilities })));
 const Collaboration = React.lazy(() => import('./pages/CollaborationWorkbench').then(module => ({ default: module.CollaborationWorkbench })));
 const Acceptance = React.lazy(() => import('./pages/AcceptanceTraceability').then(module => ({ default: module.AcceptanceTraceability })));
+const Enterprises = React.lazy(() => import('./pages/Enterprises').then(module => ({ default: module.Enterprises })));
 
 function App() {
   return (
@@ -30,6 +31,11 @@ function App() {
           <Route path="/acceptance" element={
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
               <Acceptance />
+            </React.Suspense>
+          } />
+          <Route path="/enterprises" element={
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text白">加载中...</div>}>
+              <Enterprises />
             </React.Suspense>
           } />
           <Route path="/settings" element={<Settings />} />

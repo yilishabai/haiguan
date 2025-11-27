@@ -24,6 +24,7 @@ async function initDb() {
   const saved = localStorage.getItem(STORAGE_KEY)
   const db = saved ? new SQL.Database(fromBase64(saved)) : new SQL.Database()
   if (!saved) seed(db)
+  migrate(db)
   return db
 }
 
@@ -79,7 +80,8 @@ function seed(db: Database) {
       status TEXT,
       estimated_time REAL,
       actual_time REAL,
-      efficiency REAL
+      efficiency REAL,
+      order_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS payments (
@@ -146,6 +148,44 @@ function seed(db: Database) {
       message TEXT,
       created_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS applications (
+      id TEXT PRIMARY KEY,
+      applicationNo TEXT,
+      enterprise TEXT,
+      category TEXT,
+      type TEXT,
+      status TEXT,
+      submitDate TEXT,
+      expectedDate TEXT,
+      priority TEXT,
+      compliance REAL,
+      riskScore REAL,
+      reviewer TEXT,
+      progress REAL
+    );
+
+    CREATE TABLE IF NOT EXISTS acceptance_criteria (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      category TEXT,
+      status TEXT,
+      progress REAL,
+      deadline TEXT,
+      assignee TEXT,
+      compliance REAL
+    );
+
+    CREATE TABLE IF NOT EXISTS review_workflows (
+      id TEXT PRIMARY KEY,
+      applicationId TEXT,
+      stage TEXT,
+      status TEXT,
+      reviewer TEXT,
+      startDate TEXT,
+      endDate TEXT,
+      comments TEXT
+    );
   `)
 
   const now = Date.now()
@@ -203,14 +243,14 @@ function seed(db: Database) {
   })
 
   ;[
-    { id:'L1', tr:'SF1234567890', o:'上海', d:'纽约', s:'delivery', et:72, at:68, ef:94.4 },
-    { id:'L2', tr:'YT0987654321', o:'深圳', d:'伦敦', s:'customs', et:96, at:89, ef:92.7 },
-    { id:'L3', tr:'ZTO1122334455', o:'广州', d:'东京', s:'transit', et:48, at:45, ef:93.8 },
-    { id:'L4', tr:'EMS5566778899', o:'宁波', d:'悉尼', s:'pickup', et:120, at:115, ef:95.8 },
-    { id:'L5', tr:'JD2233445566', o:'青岛', d:'新加坡', s:'completed', et:60, at:58, ef:96.7 }
+    { id:'L1', tr:'SF1234567890', o:'上海', d:'纽约', s:'delivery', et:72, at:68, ef:94.4, oid:'O10000' },
+    { id:'L2', tr:'YT0987654321', o:'深圳', d:'伦敦', s:'customs', et:96, at:89, ef:92.7, oid:'O10001' },
+    { id:'L3', tr:'ZTO1122334455', o:'广州', d:'东京', s:'transit', et:48, at:45, ef:93.8, oid:'O10002' },
+    { id:'L4', tr:'EMS5566778899', o:'宁波', d:'悉尼', s:'pickup', et:120, at:115, ef:95.8, oid:'O10003' },
+    { id:'L5', tr:'JD2233445566', o:'青岛', d:'新加坡', s:'completed', et:60, at:58, ef:96.7, oid:'O10004' }
   ].forEach(x=>{
-    db.run(`INSERT INTO logistics(id,tracking_no,origin,destination,status,estimated_time,actual_time,efficiency) VALUES($id,$tr,$o,$d,$s,$et,$at,$ef)`,{
-      $id:x.id,$tr:x.tr,$o:x.o,$d:x.d,$s:x.s,$et:x.et,$at:x.at,$ef:x.ef
+    db.run(`INSERT INTO logistics(id,tracking_no,origin,destination,status,estimated_time,actual_time,efficiency,order_id) VALUES($id,$tr,$o,$d,$s,$et,$at,$ef,$oid)`,{
+      $id:x.id,$tr:x.tr,$o:x.o,$d:x.d,$s:x.s,$et:x.et,$at:x.at,$ef:x.ef,$oid:x.oid
     })
   })
 
@@ -288,7 +328,168 @@ function seed(db: Database) {
     db.run(`INSERT INTO audit_logs(message,created_at) VALUES($m,$t)`,{ $m:m, $t:new Date().toISOString() })
   })
 
+  ;[
+    { id:'1', no:'APP20241227001', ent:'上海美妆集团有限公司', cat:'beauty', type:'new', st:'under_review', sub:'2024-12-15', exp:'2025-01-15', prio:'high', comp:94.2, risk:28, rev:'张审核员', prog:67.5 },
+    { id:'2', no:'APP20241227002', ent:'深圳电子科技有限公司', cat:'electronics', type:'renewal', st:'field_test', sub:'2024-12-10', exp:'2025-01-10', prio:'urgent', comp:87.8, risk:45, rev:'李技术专家', prog:82.1 },
+    { id:'3', no:'APP20241227003', ent:'广州食品进出口公司', cat:'wine', type:'new', st:'approved', sub:'2024-11-20', exp:'2024-12-20', prio:'medium', comp:96.5, risk:12, rev:'王合规专员', prog:100 },
+    { id:'4', no:'APP20241227004', ent:'宁波服装贸易集团', cat:'textile', type:'modification', st:'pending_docs', sub:'2024-12-18', exp:'2025-01-18', prio:'low', comp:73.4, risk:67, rev:'赵流程专员', prog:34.2 },
+    { id:'5', no:'APP20241227005', ent:'青岛机械制造有限公司', cat:'appliance', type:'new', st:'rejected', sub:'2024-12-05', exp:'2025-01-05', prio:'high', comp:68.9, risk:78, rev:'陈高级工程师', prog:45.8 }
+  ].forEach(x=>{
+    db.run(`INSERT INTO applications(id,applicationNo,enterprise,category,type,status,submitDate,expectedDate,priority,compliance,riskScore,reviewer,progress) VALUES($id,$no,$ent,$cat,$type,$st,$sub,$exp,$prio,$comp,$risk,$rev,$prog)`,{
+      $id:x.id,$no:x.no,$ent:x.ent,$cat:x.cat,$type:x.type,$st:x.st,$sub:x.sub,$exp:x.exp,$prio:x.prio,$comp:x.comp,$risk:x.risk,$rev:x.rev,$prog:x.prog
+    })
+  })
+
+  ;[
+    { id:'1', name:'NMPA合规性检查', cat:'beauty', st:'completed', prog:100, dl:'2024-12-31', as:'合规团队', cp:98.5 },
+    { id:'2', name:'技术文档完整性', cat:'electronics', st:'in_progress', prog:78.9, dl:'2025-01-15', as:'技术审核组', cp:87.3 },
+    { id:'3', name:'安全性评估报告', cat:'wine', st:'pending', prog:0, dl:'2025-01-10', as:'安全评估专家', cp:0 },
+    { id:'4', name:'质量管理体系', cat:'textile', st:'completed', prog:100, dl:'2024-12-25', as:'质量管理部', cp:94.7 },
+    { id:'5', name:'环保标准符合性', cat:'appliance', st:'failed', prog:45.2, dl:'2024-12-20', as:'环保检测组', cp:72.1 }
+  ].forEach(x=>{
+    db.run(`INSERT INTO acceptance_criteria(id,name,category,status,progress,deadline,assignee,compliance) VALUES($id,$n,$c,$s,$p,$d,$a,$cp)`,{
+      $id:x.id,$n:x.name,$c:x.cat,$s:x.st,$p:x.prog,$d:x.dl,$a:x.as,$cp:x.cp
+    })
+  })
+
+  ;[
+    { id:'1', app:'APP20241227001', stage:'initial_review', st:'completed', rev:'张审核员', sd:'2024-12-16', ed:'2024-12-18', cm:'基础材料完整，符合初步要求' },
+    { id:'2', app:'APP20241227001', stage:'technical_review', st:'in_progress', rev:'李技术专家', sd:'2024-12-19', ed:'', cm:'技术方案需要进一步验证' },
+    { id:'3', app:'APP20241227002', stage:'compliance_check', st:'pending', rev:'王合规专员', sd:'', ed:'', cm:'' }
+  ].forEach(x=>{
+    db.run(`INSERT INTO review_workflows(id,applicationId,stage,status,reviewer,startDate,endDate,comments) VALUES($id,$app,$stg,$st,$rev,$sd,$ed,$cm)`,{
+      $id:x.id,$app:x.app,$stg:x.stage,$st:x.st,$rev:x.rev,$sd:x.sd,$ed:x.ed,$cm:x.cm
+    })
+  })
+
   persist(db)
+}
+
+function migrate(db: Database) {
+  try {
+    const info = db.exec(`PRAGMA table_info(logistics)`)
+    const cols = (info[0]?.values || []).map((row:any[]) => row[1])
+    if (!cols.includes('order_id')) {
+      db.run(`ALTER TABLE logistics ADD COLUMN order_id TEXT`)
+      const orders = db.exec(`SELECT id FROM orders`)[0]?.values || []
+      const getOid = () => {
+        const idx = Math.floor(Math.random() * orders.length)
+        return orders[idx]?.[0] || 'O10000'
+      }
+      // Assign order_id for existing logistics without it
+      db.run(`UPDATE logistics SET order_id=$oid WHERE order_id IS NULL`, { $oid: getOid() })
+      // Add more logistics entries to enrich data
+      for (let i=6;i<=50;i++) {
+        const oid = getOid()
+        const id = 'L'+i
+        const carriers = ['上海','深圳','广州','宁波','青岛']
+        const dests = ['纽约','伦敦','东京','悉尼','新加坡','洛杉矶','巴黎']
+        const st = ['pickup','transit','customs','delivery','completed'][Math.floor(Math.random()*5)]
+        const o = carriers[Math.floor(Math.random()*carriers.length)]
+        const d = dests[Math.floor(Math.random()*dests.length)]
+        const et = 48 + Math.floor(Math.random()*120)
+        const at = Math.max(24, et - Math.floor(Math.random()*12))
+        const ef = Math.round((at/et)*1000)/10
+        db.run(`INSERT INTO logistics(id,tracking_no,origin,destination,status,estimated_time,actual_time,efficiency,order_id) VALUES($id,$tr,$o,$d,$s,$et,$at,$ef,$oid)`,{
+          $id:id,$tr:`TR${Math.floor(Math.random()*1e10)}`,$o:o,$d:d,$s:st,$et:et,$at:at,$ef:ef,$oid:oid
+        })
+      }
+    }
+  } catch (e) {}
+
+  try {
+    // Add more business models to cover more categories
+    const bm = db.exec(`SELECT id FROM business_models WHERE id IN ('electronics-model','textile-model')`)[0]?.values || []
+    const existing = bm.map((r:any[]) => r[0])
+    if (!existing.includes('electronics-model')) {
+      db.run(`INSERT INTO business_models(id,name,category,version,status,enterprises,orders,description,scenarios,compliance,successRate,lastUpdated,maintainer) VALUES('electronics-model','电子品类业务模型','electronics','v1.0.0','active',189,3456,'电子产品跨境合规与售后模型','["CCC认证","EMC测试","质保管理"]','["CCC","海关","税务"]',90.4,'2025-11-22','电子业务部')`)
+    }
+    if (!existing.includes('textile-model')) {
+      db.run(`INSERT INTO business_models(id,name,category,version,status,enterprises,orders,description,scenarios,compliance,successRate,lastUpdated,maintainer) VALUES('textile-model','纺织品类业务模型','textile','v1.0.1','active',132,1789,'纺织品跨境品质与合规模型','["面料溯源","环保认证","尺码标准"]','["REACH","海关","税务"]',88.6,'2025-11-23','纺织业务部')`)
+    }
+  } catch (e) {}
+
+  try {
+    // Enrich applications and review workflows
+    const countRows = db.exec(`SELECT COUNT(*) as c FROM applications`)[0]?.values || []
+    const c = countRows[0]?.[0] || 0
+    if (c < 50) {
+      const ents = ['上海美妆集团有限公司','深圳电子科技有限公司','广州食品进出口公司','宁波服装贸易集团','青岛机械制造有限公司','杭州跨境消费品集团','成都家居电器股份','天津酒类进出口公司']
+      const cats = ['beauty','electronics','wine','textile','appliance']
+      const types = ['new','renewal','modification']
+      const statuses = ['submitted','under_review','field_test','approved','rejected','pending_docs']
+      for (let i=c+1;i<=80;i++) {
+        const id = 'A'+i
+        const ent = ents[Math.floor(Math.random()*ents.length)]
+        const cat = cats[Math.floor(Math.random()*cats.length)]
+        const type = types[Math.floor(Math.random()*types.length)]
+        const st = statuses[Math.floor(Math.random()*statuses.length)]
+        const submit = new Date(Date.now()-Math.floor(Math.random()*40)*86400000).toISOString().slice(0,10)
+        const exp = new Date(Date.now()+Math.floor(Math.random()*30)*86400000).toISOString().slice(0,10)
+        const prio = ['low','medium','high','urgent'][Math.floor(Math.random()*4)]
+        const comp = Math.round((70+Math.random()*30)*10)/10
+        const risk = Math.round(Math.random()*90)
+        const rev = ['张审核员','李技术专家','王合规专员','赵流程专员','陈高级工程师'][Math.floor(Math.random()*5)]
+        const prog = Math.round(Math.random()*1000)/10
+        db.run(`INSERT INTO applications(id,applicationNo,enterprise,category,type,status,submitDate,expectedDate,priority,compliance,riskScore,reviewer,progress) VALUES($id,$no,$ent,$cat,$type,$st,$sub,$exp,$prio,$comp,$risk,$rev,$prog)`,{
+          $id:id,$no:`APP202412${(27000+i).toString()}`,$ent:ent,$cat:cat,$type:type,$st:st,$sub:submit,$exp:exp,$prio:prio,$comp:comp,$risk:risk,$rev:rev,$prog:prog
+        })
+        // Stages for each application
+        const stages = ['initial_review','technical_review','compliance_check','final_approval']
+        const stageStatuses = ['pending','in_progress','completed','rejected']
+        for (let si=0; si<stages.length; si++) {
+          const rwid = `${id}-${si+1}`
+          const ss = stageStatuses[Math.floor(Math.random()*stageStatuses.length)]
+          const sd = Math.random() < 0.7 ? new Date(Date.now()-Math.floor(Math.random()*20)*86400000).toISOString().slice(0,10) : ''
+          const ed = (ss==='completed'||ss==='rejected') ? new Date(Date.now()-Math.floor(Math.random()*10)*86400000).toISOString().slice(0,10) : ''
+          const cm = ss==='rejected' ? '材料不完整，需补充' : (ss==='completed' ? '阶段通过' : '')
+          db.run(`INSERT INTO review_workflows(id,applicationId,stage,status,reviewer,startDate,endDate,comments) VALUES($id,$app,$stg,$st,$rev,$sd,$ed,$cm)`,{
+            $id:rwid,$app:`APP202412${(27000+i).toString()}`,$stg:stages[si],$st:ss,$rev:rev,$sd:sd,$ed:ed,$cm:cm
+          })
+        }
+      }
+    }
+  } catch (e) {}
+
+  try {
+    // Create enterprises table and seed ≥ 10000 rows if missing/scarce
+    db.run(`CREATE TABLE IF NOT EXISTS enterprises (
+      id TEXT PRIMARY KEY,
+      reg_no TEXT,
+      name TEXT,
+      type TEXT,
+      category TEXT,
+      region TEXT,
+      status TEXT,
+      compliance REAL,
+      service_eligible INTEGER,
+      active_orders INTEGER,
+      last_active TEXT
+    )`)
+    const countRows = db.exec(`SELECT COUNT(*) as c FROM enterprises`)[0]?.values || []
+    const c = countRows[0]?.[0] || 0
+    if (c < 10000) {
+      const regions = ['北京','上海','广州','深圳','杭州','宁波','青岛','天津','重庆','成都','苏州','厦门']
+      const cats = ['beauty','wine','appliance','electronics','textile']
+      const types = ['importer','exporter','both']
+      for (let i=c+1; i<=12000; i++) {
+        const id = 'E'+i
+        const reg = 'REG'+(100000+i)
+        const name = `企业${i.toString().padStart(5,'0')}`
+        const type = types[Math.floor(Math.random()*types.length)]
+        const cat = cats[Math.floor(Math.random()*cats.length)]
+        const region = regions[Math.floor(Math.random()*regions.length)]
+        const status = ['active','inactive','blocked'][Math.floor(Math.random()*3)]
+        const compliance = Math.round((70+Math.random()*30)*10)/10
+        const eligible = compliance>=75 ? 1 : 0
+        const activeOrders = Math.floor(Math.random()*200)
+        const lastActive = new Date(Date.now()-Math.floor(Math.random()*60)*86400000).toISOString()
+        db.run(`INSERT INTO enterprises(id,reg_no,name,type,category,region,status,compliance,service_eligible,active_orders,last_active) VALUES($id,$reg,$name,$type,$cat,$region,$status,$comp,$elig,$act,$last)`,{
+          $id:id,$reg:reg,$name:name,$type:type,$cat:cat,$region:region,$status:status,$comp:compliance,$elig:eligible,$act:activeOrders,$last:lastActive
+        })
+      }
+    }
+  } catch (e) {}
 }
 
 export async function getDatabase() {
@@ -381,7 +582,7 @@ export async function updateCustomsStatus(id: string, status: string) {
 }
 
 export async function getLogisticsData() {
-  return queryAll(`SELECT id, tracking_no as trackingNo, origin, destination, status, estimated_time as estimatedTime, actual_time as actualTime, efficiency FROM logistics ORDER BY id`)
+  return queryAll(`SELECT id, tracking_no as trackingNo, origin, destination, status, estimated_time as estimatedTime, actual_time as actualTime, efficiency, order_id as orderId FROM logistics ORDER BY id`)
 }
 
 export async function getPaymentMethods() {
@@ -398,6 +599,77 @@ export async function getAlgorithms() {
 
 export async function getBusinessModels() {
   return queryAll(`SELECT * FROM business_models`)
+}
+
+export async function upsertBusinessModel(model: {
+  id: string,
+  name: string,
+  category: string,
+  version: string,
+  status: string,
+  enterprises: number,
+  orders: number,
+  description: string,
+  scenarios: string[],
+  compliance: string[],
+  successRate: number,
+  lastUpdated: string,
+  maintainer: string
+}) {
+  await exec(`CREATE TABLE IF NOT EXISTS business_models (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    category TEXT,
+    version TEXT,
+    status TEXT,
+    enterprises INTEGER,
+    orders INTEGER,
+    description TEXT,
+    scenarios TEXT,
+    compliance TEXT,
+    successRate REAL,
+    lastUpdated TEXT,
+    maintainer TEXT
+  )`)
+  await exec(`INSERT INTO business_models(id,name,category,version,status,enterprises,orders,description,scenarios,compliance,successRate,lastUpdated,maintainer)
+              VALUES($id,$n,$c,$v,$s,$e,$o,$d,$sc,$cp,$sr,$lu,$mt)
+              ON CONFLICT(id) DO UPDATE SET
+                name=$n, category=$c, version=$v, status=$s, enterprises=$e, orders=$o, description=$d,
+                scenarios=$sc, compliance=$cp, successRate=$sr, lastUpdated=$lu, maintainer=$mt`,{
+    $id:model.id,$n:model.name,$c:model.category,$v:model.version,$s:model.status,$e:model.enterprises,$o:model.orders,
+    $d:model.description,$sc:JSON.stringify(model.scenarios),$cp:JSON.stringify(model.compliance),$sr:model.successRate,
+    $lu:model.lastUpdated,$mt:model.maintainer
+  })
+}
+
+export async function deleteBusinessModel(id: string) {
+  await exec(`DELETE FROM business_models WHERE id=$id`, { $id:id })
+}
+
+// Enterprises dataset
+export async function getEnterprisesPaged(q: string, type: string, status: string, category: string, region: string, offset: number, limit: number) {
+  const where: string[] = []
+  const params: any = { $offset: offset, $limit: limit }
+  if (q) { where.push(`(name LIKE $q OR reg_no LIKE $q OR region LIKE $q)`); params.$q = `%${q}%` }
+  if (type && type !== 'all') { where.push(`type = $type`); params.$type = type }
+  if (status && status !== 'all') { where.push(`status = $status`); params.$status = status }
+  if (category && category !== 'all') { where.push(`category = $category`); params.$category = category }
+  if (region && region !== 'all') { where.push(`region = $region`); params.$region = region }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  return queryAll(`SELECT id, reg_no as regNo, name, type, category, region, status, compliance, service_eligible as eligible, active_orders as activeOrders, last_active as lastActive FROM enterprises ${whereSql} ORDER BY last_active DESC LIMIT $limit OFFSET $offset`, params)
+}
+
+export async function countEnterprises(q: string, type: string, status: string, category: string, region: string) {
+  const where: string[] = []
+  const params: any = {}
+  if (q) { where.push(`(name LIKE $q OR reg_no LIKE $q OR region LIKE $q)`); params.$q = `%${q}%` }
+  if (type && type !== 'all') { where.push(`type = $type`); params.$type = type }
+  if (status && status !== 'all') { where.push(`status = $status`); params.$status = status }
+  if (category && category !== 'all') { where.push(`category = $category`); params.$category = category }
+  if (region && region !== 'all') { where.push(`region = $region`); params.$region = region }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const rows = await queryAll(`SELECT COUNT(*) as c FROM enterprises ${whereSql}`, params)
+  return rows[0]?.c || 0
 }
 
 export async function getTimelineEvents() {
@@ -420,4 +692,20 @@ export async function getSettings() {
 export async function upsertSetting(key: string, value: string) {
   await exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`)
   await exec(`INSERT INTO settings(key,value) VALUES($k,$v) ON CONFLICT(key) DO UPDATE SET value=$v`, { $k: key, $v: value })
+}
+
+export async function getApplications() {
+  return queryAll(`SELECT id, applicationNo, enterprise, category, type, status, submitDate, expectedDate, priority, compliance, riskScore, reviewer, progress FROM applications ORDER BY submitDate DESC`)
+}
+
+export async function getAcceptanceCriteria() {
+  return queryAll(`SELECT id, name, category, status, progress, deadline, assignee, compliance FROM acceptance_criteria ORDER BY id`)
+}
+
+export async function getReviewWorkflows() {
+  return queryAll(`SELECT id, applicationId, stage, status, reviewer, startDate, endDate, comments FROM review_workflows ORDER BY id`)
+}
+
+export async function updateLogisticsStatus(id: string, status: string) {
+  await exec(`UPDATE logistics SET status=$st WHERE id=$id`, { $st: status, $id: id })
 }

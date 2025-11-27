@@ -28,20 +28,10 @@ const tempData = Array.from({ length: 40 }, (_, i) => ({
   value: 22 + Math.random() * 0.5 - 0.25
 }));
 
-const auditLogs = [
-  "[System] 收到支付单据，金额校验通过...",
-  "[AI] OCR识别箱单，与订单信息比对一致...",
-  "[Customs] 预归类建议算法启动...",
-  "[Risk] 无违禁成分，风险等级：低...",
-  "[IoT] 冷链设备心跳检测正常 (ID: #IoT-8821)...",
-  "[System] 原始产地证验真通过 (Certificate #FR-2025)...",
-  "[Blockchain] 节点数据上链成功，哈希值生成...",
-  "[Customs] 申报单逻辑检查通过...",
-  "[System] 舱单信息已同步至监管平台...",
-  "[AI] 图像识别比对：包装完好率 99.9%...",
-  "[System] 税款预估计算完成...",
-  "[Logistics] 车辆 GPS 轨迹偏移检测：无异常..."
-];
+const fetchAuditLogs = async () => {
+  const rows = await queryAll(`SELECT message FROM audit_logs ORDER BY id`);
+  return rows.map((r:any)=>r.message);
+};
 
 // --- Components ---
 
@@ -138,97 +128,75 @@ const TimelineNode = ({ event, isLast }: { event: TimelineEvent; isLast: boolean
   </div>
 );
 
-const TraceabilityTimeline = () => {
-  const events: TimelineEvent[] = [
-    {
-      id: '1',
-      date: '2025-11-24',
-      time: '09:00',
-      title: 'Warehouse Outbound',
-      location: 'France',
-      icon: Box,
-      status: 'completed',
-      details: (
-        <div className="flex items-center gap-3 group cursor-pointer">
-          <div className="p-2 rounded bg-blue-500/10 text-blue-400 group-hover:text-blue-300 transition-colors">
-            <FileCheck size={16} />
+const TraceabilityTimeline = ({ orderId }: { orderId?: string }) => {
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!orderId) { setEvents([]); return; }
+      const [o] = await queryAll(`SELECT order_number, enterprise, created_at FROM orders WHERE id=$id`, { $id: orderId });
+      const [c] = await queryAll(`SELECT status, clearance_time FROM customs_clearances WHERE order_id=$id LIMIT 1`, { $id: orderId });
+      const [l] = await queryAll(`SELECT origin, destination, status, actual_time, estimated_time FROM logistics WHERE order_id=$id ORDER BY id DESC LIMIT 1`, { $id: orderId });
+      const created = o?.created_at ? new Date(o.created_at) : new Date();
+      const fmt = (d: Date) => `${d.toISOString().slice(0,10)} | ${d.toTimeString().slice(0,5)}`;
+      const e1: TimelineEvent = {
+        id: '1', date: created.toISOString().slice(0,10), time: created.toTimeString().slice(0,5),
+        title: 'Warehouse Outbound', location: l?.origin || '—', icon: Box, status: 'completed',
+        details: (
+          <div className="flex items-center gap-3 group cursor-pointer">
+            <div className="p-2 rounded bg-blue-500/10 text-blue-400 group-hover:text-blue-300 transition-colors"><FileCheck size={16} /></div>
+            <div>
+              <div className="text-xs text-gray-400">Attached Document</div>
+              <div className="text-sm text-blue-200 underline decoration-blue-500/30 underline-offset-2">Origin_Certificate.pdf</div>
+            </div>
           </div>
-          <div>
-            <div className="text-xs text-gray-400">Attached Document</div>
-            <div className="text-sm text-blue-200 underline decoration-blue-500/30 underline-offset-2">Origin_Certificate.pdf</div>
+        )
+      };
+      const transportStart = new Date(created.getTime() + 3600*1000);
+      const e2: TimelineEvent = {
+        id: '2', date: transportStart.toISOString().slice(0,10), time: transportStart.toTimeString().slice(0,5),
+        title: 'Intl. Transport', location: `${l?.origin || '—'} → ${l?.destination || '—'}`, icon: Plane,
+        status: (l?.status && ['transit','delivery','customs','completed'].includes(l.status)) ? 'completed' : 'current',
+        details: (
+          <div className="space-y-2">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-gray-400 flex items-center gap-1"><Thermometer size={12} /> Avg Temp</span>
+              <span className="text-emerald-400 font-mono">22°C</span>
+            </div>
+            <div className="h-12 w-full bg-emerald-900/10 rounded border border-emerald-500/20 overflow-hidden relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={tempData}>
+                  <Line type="monotone" dataKey="value" stroke="#10b981" strokeWidth={1.5} dot={false} />
+                  <YAxis domain={['dataMin', 'dataMax']} hide />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
-      )
-    },
-    {
-      id: '2',
-      date: '2025-11-25',
-      time: '14:00',
-      title: 'Intl. Transport',
-      location: 'Air Freight',
-      icon: Plane,
-      status: 'completed',
-      details: (
-        <div className="space-y-2">
-          <div className="flex justify-between items-center text-xs">
-            <span className="text-gray-400 flex items-center gap-1">
-              <Thermometer size={12} /> Avg Temp
-            </span>
-            <span className="text-emerald-400 font-mono">22°C</span>
+        )
+      };
+      const customsTime = new Date(created.getTime() + (c?.clearance_time ? c.clearance_time*3600*1000 : 2*3600*1000));
+      const e3: TimelineEvent = {
+        id: '3', date: customsTime.toISOString().slice(0,10), time: customsTime.toTimeString().slice(0,5),
+        title: 'Customs Declaration', location: 'China', icon: ShieldCheck,
+        status: c?.status==='cleared'?'completed':c?.status==='held'?'pending':'current',
+        details: (
+          <div className="bg-gradient-to-r from-amber-500/10 to-transparent p-3 rounded border-l-2 border-amber-500 flex items-center justify-between">
+            <div className="flex items-center gap-2"><Zap size={16} className="text-amber-400 fill-amber-400" /><span className="text-amber-100 text-sm font-medium">{c?.status==='cleared'?'Lightning Release':'Declaration In Progress'}</span></div>
+            <div className="text-xs font-mono text-amber-200/70">{fmt(customsTime)}</div>
           </div>
-          <div className="h-12 w-full bg-emerald-900/10 rounded border border-emerald-500/20 overflow-hidden relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={tempData}>
-                <Line 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#10b981" 
-                  strokeWidth={1.5} 
-                  dot={false} 
-                />
-                <YAxis domain={['dataMin', 'dataMax']} hide />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )
-    },
-    {
-      id: '3',
-      date: '2025-11-26',
-      time: '08:30',
-      title: 'Customs Declaration',
-      location: 'China',
-      icon: ShieldCheck,
-      status: 'completed',
-      details: (
-        <div className="bg-gradient-to-r from-amber-500/10 to-transparent p-3 rounded border-l-2 border-amber-500 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Zap size={16} className="text-amber-400 fill-amber-400" />
-            <span className="text-amber-100 text-sm font-medium">Lightning Release</span>
-          </div>
-          <div className="text-xs font-mono text-amber-200/70">
-            08:30:00 <span className="text-gray-500">→</span> 08:30:05
-          </div>
-        </div>
-      )
-    },
-    {
-      id: '4',
-      date: '2025-11-26',
-      time: '10:00',
-      title: 'Bonded Warehouse',
-      location: 'Hangzhou',
-      icon: Package,
-      status: 'completed',
-      details: (
-        <div className="flex items-center gap-2 text-sm text-emerald-300">
-           <CheckCircle size={14} />
-           Inventory Synced
-        </div>
-      )
-    }
-  ];
+        )
+      };
+      const warehouseTime = new Date(customsTime.getTime() + (l?.actual_time ? l.actual_time*3600*1000/24 : 2*3600*1000));
+      const e4: TimelineEvent = {
+        id: '4', date: warehouseTime.toISOString().slice(0,10), time: warehouseTime.toTimeString().slice(0,5),
+        title: 'Bonded Warehouse', location: 'Hangzhou', icon: Package,
+        status: l?.status==='completed'?'completed':'pending',
+        details: (<div className="flex items-center gap-2 text-sm text-emerald-300"><CheckCircle size={14} /> Inventory Synced</div>)
+      };
+      setEvents([e1,e2,e3,e4]);
+    };
+    load();
+  }, [orderId]);
 
   return (
     <HudPanel className="h-full overflow-hidden flex flex-col" title="Traceability Timeline" subtitle="全链路时空轨迹">
@@ -245,16 +213,14 @@ const TraceabilityTimeline = () => {
 
 const AuditLog = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [logs, setLogs] = useState(auditLogs);
+  const [logs, setLogs] = useState<string[]>([]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setLogs(prev => {
-        const newLogs = [...prev.slice(1), prev[0]]; // Rotate logs
-        return newLogs;
-      });
-    }, 3000);
-    return () => clearInterval(interval);
+    let timer: any;
+    const load = async () => { setLogs(await fetchAuditLogs()); };
+    load();
+    timer = setInterval(async ()=>{ setLogs(await fetchAuditLogs()); }, 4000);
+    return () => { if (timer) clearInterval(timer); };
   }, []);
 
   return (
@@ -330,7 +296,7 @@ export const AcceptanceTraceability: React.FC = () => {
 
         {/* Center: 50% (2 cols in 4-col grid) */}
         <div className="lg:col-span-2 h-full">
-          {selected ? <TraceabilityTimeline /> : (
+          {selected ? <TraceabilityTimeline orderId={selected.id} /> : (
             <HudPanel className="h-full flex items-center justify-center" title="等待检索结果">
               <div className="text-gray-400">请输入关键词并选择商品</div>
             </HudPanel>
@@ -340,7 +306,7 @@ export const AcceptanceTraceability: React.FC = () => {
         {/* Right: 25% */}
         <div className="lg:col-span-1 h-full">
           {selected ? <AuditLog /> : (
-            <HudPanel className="h-full flex items-center justify-center" title="提示">
+            <HudPanel className="h-full flex items中心 justify-center" title="提示">
               <div className="text-gray-400">选中商品后显示日志</div>
             </HudPanel>
           )}

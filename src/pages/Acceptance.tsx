@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
-import { getSettings } from '../lib/sqlite';
+import { getSettings, getApplications, getAcceptanceCriteria, getReviewWorkflows } from '../lib/sqlite';
 
 interface Application {
   id: string;
@@ -82,184 +82,34 @@ export const Acceptance: React.FC = () => {
   const [appPage, setAppPage] = useState(1);
   const [appPageSize, setAppPageSize] = useState(10);
 
-  // 模拟数据
   useEffect(() => {
-    const generateApplications = (): Application[] => [
-      {
-        id: '1',
-        applicationNo: 'APP20241227001',
-        enterprise: '上海美妆集团有限公司',
-        category: 'beauty',
-        type: 'new',
-        status: 'under_review',
-        submitDate: '2024-12-15',
-        expectedDate: '2025-01-15',
-        priority: 'high',
-        compliance: 94.2,
-        riskScore: 28,
-        reviewer: '张审核员',
-        progress: 67.5
-      },
-      {
-        id: '2',
-        applicationNo: 'APP20241227002',
-        enterprise: '深圳电子科技有限公司',
-        category: 'electronics',
-        type: 'renewal',
-        status: 'field_test',
-        submitDate: '2024-12-10',
-        expectedDate: '2025-01-10',
-        priority: 'urgent',
-        compliance: 87.8,
-        riskScore: 45,
-        reviewer: '李技术专家',
-        progress: 82.1
-      },
-      {
-        id: '3',
-        applicationNo: 'APP20241227003',
-        enterprise: '广州食品进出口公司',
-        category: 'wine',
-        type: 'new',
-        status: 'approved',
-        submitDate: '2024-11-20',
-        expectedDate: '2024-12-20',
-        priority: 'medium',
-        compliance: 96.5,
-        riskScore: 12,
-        reviewer: '王合规专员',
-        progress: 100
-      },
-      {
-        id: '4',
-        applicationNo: 'APP20241227004',
-        enterprise: '宁波服装贸易集团',
-        category: 'textile',
-        type: 'modification',
-        status: 'pending_docs',
-        submitDate: '2024-12-18',
-        expectedDate: '2025-01-18',
-        priority: 'low',
-        compliance: 73.4,
-        riskScore: 67,
-        reviewer: '赵流程专员',
-        progress: 34.2
-      },
-      {
-        id: '5',
-        applicationNo: 'APP20241227005',
-        enterprise: '青岛机械制造有限公司',
-        category: 'appliance',
-        type: 'new',
-        status: 'rejected',
-        submitDate: '2024-12-05',
-        expectedDate: '2025-01-05',
-        priority: 'high',
-        compliance: 68.9,
-        riskScore: 78,
-        reviewer: '陈高级工程师',
-        progress: 45.8
-      }
-    ];
+    const computeMetrics = (apps: Application[]): EnterpriseMetrics => {
+      const total = apps.length;
+      const active = apps.filter(a => ['under_review','field_test','pending_docs','submitted'].includes(a.status)).length;
+      const now = new Date();
+      const newThisMonth = apps.filter(a => {
+        const d = new Date(a.submitDate);
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      }).length;
+      const completionRate = total ? Math.round((apps.filter(a => a.status === 'approved').length / total) * 1000) / 10 : 0;
+      const approvedDurations = apps.filter(a => a.status === 'approved').map(a => {
+        const sd = new Date(a.submitDate).getTime();
+        const ed = new Date(a.expectedDate).getTime();
+        return Math.max(0, Math.round((ed - sd) / (1000*60*60*24)));
+      });
+      const avgProcessingTime = approvedDurations.length ? Math.round((approvedDurations.reduce((s, x) => s + x, 0) / approvedDurations.length) * 10) / 10 : 0;
+      return { total, active, newThisMonth, completionRate, avgProcessingTime };
+    };
 
-    const generateAcceptanceCriteria = (): AcceptanceCriteria[] => [
-      {
-        id: '1',
-        name: 'NMPA合规性检查',
-        category: 'beauty',
-        status: 'completed',
-        progress: 100,
-        deadline: '2024-12-31',
-        assignee: '合规团队',
-        compliance: 98.5
-      },
-      {
-        id: '2',
-        name: '技术文档完整性',
-        category: 'electronics',
-        status: 'in_progress',
-        progress: 78.9,
-        deadline: '2025-01-15',
-        assignee: '技术审核组',
-        compliance: 87.3
-      },
-      {
-        id: '3',
-        name: '安全性评估报告',
-        category: 'wine',
-        status: 'pending',
-        progress: 0,
-        deadline: '2025-01-10',
-        assignee: '安全评估专家',
-        compliance: 0
-      },
-      {
-        id: '4',
-        name: '质量管理体系',
-        category: 'textile',
-        status: 'completed',
-        progress: 100,
-        deadline: '2024-12-25',
-        assignee: '质量管理部',
-        compliance: 94.7
-      },
-      {
-        id: '5',
-        name: '环保标准符合性',
-        category: 'appliance',
-        status: 'failed',
-        progress: 45.2,
-        deadline: '2024-12-20',
-        assignee: '环保检测组',
-        compliance: 72.1
-      }
-    ];
-
-    const generateReviewWorkflows = (): ReviewWorkflow[] => [
-      {
-        id: '1',
-        applicationId: 'APP20241227001',
-        stage: 'initial_review',
-        status: 'completed',
-        reviewer: '张审核员',
-        startDate: '2024-12-16',
-        endDate: '2024-12-18',
-        comments: '基础材料完整，符合初步要求'
-      },
-      {
-        id: '2',
-        applicationId: 'APP20241227001',
-        stage: 'technical_review',
-        status: 'in_progress',
-        reviewer: '李技术专家',
-        startDate: '2024-12-19',
-        endDate: '',
-        comments: '技术方案需要进一步验证'
-      },
-      {
-        id: '3',
-        applicationId: 'APP20241227002',
-        stage: 'compliance_check',
-        status: 'pending',
-        reviewer: '王合规专员',
-        startDate: '',
-        endDate: '',
-        comments: ''
-      }
-    ];
-
-    const generateEnterpriseMetrics = (): EnterpriseMetrics => ({
-      total: 19456,
-      active: 1247,
-      newThisMonth: 234,
-      completionRate: 87.3,
-      avgProcessingTime: 21.5
-    });
-
-    setApplications(generateApplications());
-    setAcceptanceCriteria(generateAcceptanceCriteria());
-    setReviewWorkflows(generateReviewWorkflows());
-    setEnterpriseMetrics(generateEnterpriseMetrics());
+    const load = async () => {
+      const apps = await getApplications();
+      const criteria = await getAcceptanceCriteria();
+      const flows = await getReviewWorkflows();
+      setApplications(apps as any);
+      setAcceptanceCriteria(criteria as any);
+      setReviewWorkflows(flows as any);
+      setEnterpriseMetrics(computeMetrics(apps as any));
+    };
 
     let timer: any;
     const setup = async () => {
@@ -267,19 +117,11 @@ export const Acceptance: React.FC = () => {
         const rows = await getSettings();
         const val = rows.find((r: any) => r.key === 'sync_interval')?.value || '3000';
         const delay = Math.max(500, parseInt(val) || 3000);
-        timer = setInterval(() => {
-          setApplications(generateApplications());
-          setAcceptanceCriteria(generateAcceptanceCriteria());
-          setReviewWorkflows(generateReviewWorkflows());
-          setEnterpriseMetrics(generateEnterpriseMetrics());
-        }, delay);
+        await load();
+        timer = setInterval(load, delay);
       } catch (_) {
-        timer = setInterval(() => {
-          setApplications(generateApplications());
-          setAcceptanceCriteria(generateAcceptanceCriteria());
-          setReviewWorkflows(generateReviewWorkflows());
-          setEnterpriseMetrics(generateEnterpriseMetrics());
-        }, 3000);
+        await load();
+        timer = setInterval(load, 3000);
       }
     };
     setup();
@@ -348,14 +190,28 @@ export const Acceptance: React.FC = () => {
     { name: '已批准', value: applications.filter(a => a.status === 'approved').length, fill: '#10B981' },
     { name: '已驳回', value: applications.filter(a => a.status === 'rejected').length, fill: '#EF4444' }
   ];
-
-  const monthlyTrend = [
-    { month: '8月', applications: 156, approvals: 134, rejections: 22 },
-    { month: '9月', applications: 189, approvals: 167, rejections: 18 },
-    { month: '10月', applications: 234, approvals: 198, rejections: 28 },
-    { month: '11月', applications: 198, approvals: 178, rejections: 15 },
-    { month: '12月', applications: 267, approvals: 234, rejections: 21 }
-  ];
+  const monthlyTrend = (() => {
+    const now = new Date();
+    const labels = Array.from({ length: 5 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (4 - i), 1);
+      return `${d.getMonth() + 1}月`;
+    });
+    return labels.map((label, idx) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (4 - idx), 1);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const inMonth = applications.filter(a => {
+        const sd = new Date(a.submitDate);
+        return sd.getFullYear() === y && sd.getMonth() === m;
+      });
+      return {
+        month: label,
+        applications: inMonth.length,
+        approvals: inMonth.filter(x => x.status === 'approved').length,
+        rejections: inMonth.filter(x => x.status === 'rejected').length
+      };
+    });
+  })();
 
   const COLORS = ['#00F0FF', '#2E5CFF', '#10B981', '#F59E0B', '#EF4444'];
 
@@ -399,11 +255,11 @@ export const Acceptance: React.FC = () => {
         />
         <DataCard 
           title="通过率" 
-          value="87.3" 
+          value={(enterpriseMetrics?.completionRate ?? 0).toString()} 
           unit="%" 
           trend="up" 
           status="excellent" 
-          icon={<CheckCircle className="w-6 h-6 text-emerald-green" />}
+          icon={<CheckCircle className="w-6 h-6 text-emerald-green" />} 
         />
         <DataCard 
           title="平均处理时间" 
@@ -415,11 +271,11 @@ export const Acceptance: React.FC = () => {
         />
         <DataCard 
           title="合规率" 
-          value="94.2" 
+          value={(applications.length ? (Math.round(applications.reduce((s,a)=>s+a.compliance,0)/applications.length*10)/10) : 0).toString()} 
           unit="%" 
           trend="up" 
           status="excellent" 
-          icon={<Award className="w-6 h-6 text-purple-400" />}
+          icon={<Award className="w-6 h-6 text-purple-400" />} 
         />
       </div>
 

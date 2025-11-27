@@ -6,7 +6,8 @@ import { queryAll } from '../lib/sqlite'
 export const CollaborationWorkbench: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<string | null>(null)
   const [copilotOpen, setCopilotOpen] = useState(true)
-  const [tasks, setTasks] = useState<{ id:string; title:string; route:string; tags:string[] }[]>([])
+  const [tasks, setTasks] = useState<{ id:string; orderId:string; title:string; route:string; tags:string[]; payStatus?:string; customsStatus?:string; logisticsStatus?:string }[]>([])
+  const [metrics, setMetrics] = useState<{ pending:number; customsAmount:number; blocked:number }>({ pending:0, customsAmount:0, blocked:0 })
 
   useEffect(() => {
     const load = async () => {
@@ -14,9 +15,10 @@ export const CollaborationWorkbench: React.FC = () => {
         SELECT o.id as id, o.order_number as orderNo, o.enterprise as ent, o.category as cat,
                (SELECT status FROM settlements s WHERE s.order_id=o.id LIMIT 1) as payStatus,
                (SELECT status FROM customs_clearances c WHERE c.order_id=o.id LIMIT 1) as customsStatus,
-               (SELECT origin||' -> '||destination FROM logistics l ORDER BY l.id LIMIT 1) as route
+               (SELECT origin||' -> '||destination FROM logistics l WHERE l.order_id=o.id ORDER BY l.id DESC LIMIT 1) as route,
+               (SELECT status FROM logistics l WHERE l.order_id=o.id ORDER BY l.id DESC LIMIT 1) as logisticsStatus
         FROM orders o
-        ORDER BY o.created_at DESC LIMIT 12
+        ORDER BY o.created_at DESC LIMIT 20
       `)
       const t = rows.map(r => {
         const tags = [] as string[]
@@ -27,9 +29,17 @@ export const CollaborationWorkbench: React.FC = () => {
         if (!tags.length) tags.push('处理中')
         const catTag = r.cat==='beauty'?'美妆':r.cat==='wine'?'酒水':r.cat==='appliance'?'家电':r.cat==='electronics'?'电子':'纺织'
         tags.push(catTag)
-        return { id: r.orderNo, title: r.ent, route: r.route || '🇫🇷 -> 🇨🇳', tags }
+        return { id: r.orderNo, orderId: r.id, title: r.ent, route: r.route || '🇫🇷 -> 🇨🇳', tags, payStatus: r.payStatus, customsStatus: r.customsStatus, logisticsStatus: r.logisticsStatus }
       })
       setTasks(t)
+
+      const mrows = await queryAll(`
+        SELECT 
+          (SELECT COUNT(*) FROM orders WHERE status!='completed') as pending,
+          (SELECT IFNULL(SUM(o.amount),0) FROM orders o WHERE date(o.created_at)=date('now') AND EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id)) as customsAmount,
+          (SELECT COUNT(*) FROM customs_clearances WHERE status='held') as blocked
+      `)
+      setMetrics({ pending: mrows[0]?.pending || 0, customsAmount: Math.round((mrows[0]?.customsAmount || 0)/1000)/1000, blocked: mrows[0]?.blocked || 0 })
     }
     load()
   }, [])
@@ -45,15 +55,15 @@ export const CollaborationWorkbench: React.FC = () => {
         <div className="flex space-x-4">
           <div className="hud-panel p-3">
             <div className="text-xs text-gray-400">待处理订单</div>
-            <div className="digital-display text-cyber-cyan text-xl">24</div>
+            <div className="digital-display text-cyber-cyan text-xl">{metrics.pending}</div>
           </div>
           <div className="hud-panel p-3">
             <div className="text-xs text-gray-400">今日报关金额</div>
-            <div className="digital-display text-emerald-green text-xl">$450k</div>
+            <div className="digital-display text-emerald-green text-xl">${metrics.customsAmount}k</div>
           </div>
           <div className="hud-panel p-3">
             <div className="text-xs text-gray-400">异常阻断</div>
-            <div className="digital-display text-alert-red text-xl">2</div>
+            <div className="digital-display text-alert-red text-xl">{metrics.blocked}</div>
           </div>
         </div>
       </div>
@@ -102,7 +112,7 @@ export const CollaborationWorkbench: React.FC = () => {
                 <div className="flex flex-col items-center">
                   <div className="hud-panel w-full p-4 text-center">
                     <div className="text-sm text-gray-400 mb-1">支付</div>
-                    <div className="text-white font-semibold">跨境汇款中...</div>
+                    <div className="text-white font-semibold">{(tasks.find(t=>t.id===selectedTask)?.payStatus)==='completed'?'支付完成':(tasks.find(t=>t.id===selectedTask)?.payStatus)==='processing'?'跨境汇款中...':'待支付'}</div>
                     <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs border border-cyber-cyan/30 text-cyber-cyan">
                       <CreditCard className="w-3 h-3 mr-1" /> 汇率锁定 7.12
                     </div>
@@ -112,10 +122,12 @@ export const CollaborationWorkbench: React.FC = () => {
                 <div className="flex flex-col items-center">
                   <div className="hud-panel w-full p-4 text-center border-cyber-cyan/40">
                     <div className="text-sm text-gray-400 mb-1">通关</div>
-                    <div className="text-white font-semibold">扫描中...</div>
-                    <div className="mt-2 text-xs text-emerald-green">HS编码 33049900 匹配成功</div>
-                    <div className="text-xs text-emerald-green">NMPA备案号校验通过</div>
-                    <div className="mt-2 px-2 py-1 rounded bg-cyber-cyan/10 text-cyber-cyan text-xs inline-flex items-center">🤖 AI 正在自动生成报关单 (耗时 0.5s)</div>
+                    <div className="text-white font-semibold">
+                      {((tasks.find(t=>t.id===selectedTask)?.customsStatus)==='cleared')?'通关完成':((tasks.find(t=>t.id===selectedTask)?.customsStatus)==='held')?'异常拦截':((tasks.find(t=>t.id===selectedTask)?.customsStatus)==='inspecting')?'扫描中...':((tasks.find(t=>t.id===selectedTask)?.customsStatus)==='declared')?'已申报':'待处理'}
+                    </div>
+                    <div className="mt-2 text-xs text-emerald-green">HS编码 匹配成功</div>
+                    <div className="text-xs text-emerald-green">成分与备案校验通过</div>
+                    <div className="mt-2 px-2 py-1 rounded bg-cyber-cyan/10 text-cyber-cyan text-xs inline-flex items-center">🤖 智能生成报关单</div>
                     <div className="mt-3 w-24 h-24 border border-cyber-cyan/30 rounded-full animate-pulse"></div>
                   </div>
                 </div>
@@ -123,17 +135,17 @@ export const CollaborationWorkbench: React.FC = () => {
                 <div className="flex flex-col items-center">
                   <div className="hud-panel w-full p-4 text-center">
                     <div className="text-sm text-gray-400 mb-1">物流</div>
-                    <div className="text-white font-semibold">菜鸟国际仓接单</div>
+                    <div className="text-white font-semibold">{tasks.find(t=>t.id===selectedTask)?.route || '—'}</div>
                     <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs border border-yellow-500/30 text-yellow-400">
-                      <Truck className="w-3 h-3 mr-1" /> 在途
+                      <Truck className="w-3 h-3 mr-1" /> {(tasks.find(t=>t.id===selectedTask)?.logisticsStatus)||'pickup'}
                     </div>
                   </div>
                 </div>
                 {/* 入库（灰度） */}
-                <div className="flex flex-col items-center opacity-60">
+                <div className={`flex flex-col items-center ${((tasks.find(t=>t.id===selectedTask)?.logisticsStatus)==='completed')?'opacity-100':'opacity-60'}`}>
                   <div className="hud-panel w-full p-4 text-center">
                     <div className="text-sm text-gray-400 mb-1">入库</div>
-                    <div className="text-white font-semibold">待入库</div>
+                    <div className="text-white font-semibold">{((tasks.find(t=>t.id===selectedTask)?.logisticsStatus)==='completed')?'已入库':'待入库'}</div>
                   </div>
                 </div>
               </div>
@@ -152,8 +164,8 @@ export const CollaborationWorkbench: React.FC = () => {
           <div className="text-xs text-gray-400">当前订单</div>
           <div className="digital-display text-white">{selectedTask || '未选择'}</div>
           <div className="hud-panel p-3">
-            <div className="text-sm text-emerald-green">HS编码 3304.99 匹配成功，税率计算完毕。</div>
-            <div className="text-xs text-gray-400 mt-2">建议：价格申报与成分匹配已通过，可自动申报。</div>
+            <div className="text-sm text-emerald-green">{((tasks.find(t=>t.id===selectedTask)?.customsStatus)==='cleared')?'通关已完成，可安排配送': '申报材料校验通过，可继续提单'}</div>
+            <div className="text-xs text-gray-400 mt-2">建议：{((tasks.find(t=>t.id===selectedTask)?.payStatus)==='pending')?'尽快完成支付以加速流程':'保持物流在途监控与异常预警'}</div>
           </div>
         </div>
       </div>
