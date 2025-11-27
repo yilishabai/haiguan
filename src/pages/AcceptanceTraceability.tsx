@@ -216,11 +216,9 @@ const AuditLog = () => {
   const [logs, setLogs] = useState<string[]>([]);
 
   useEffect(() => {
-    let timer: any;
     const load = async () => { setLogs(await fetchAuditLogs()); };
     load();
-    timer = setInterval(async ()=>{ setLogs(await fetchAuditLogs()); }, 4000);
-    return () => { if (timer) clearInterval(timer); };
+    return () => {};
   }, []);
 
   return (
@@ -259,12 +257,28 @@ export const AcceptanceTraceability: React.FC = () => {
   const [results, setResults] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
+  const [category, setCategory] = useState<'all'|'beauty'|'electronics'|'wine'|'textile'|'appliance'>('all');
+  const [clearanceFilter, setClearanceFilter] = useState<'all'|'cleared'|'held'>('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
 
   const handleSearch = async () => {
     setLoading(true);
     try {
-      const rows = await queryAll(`SELECT id, order_number, enterprise, category FROM orders WHERE order_number LIKE $q OR enterprise LIKE $q LIMIT 50`, { $q: `%${query}%` });
+      const where: string[] = [];
+      const params: any = { $limit: pageSize, $offset: (page-1)*pageSize };
+      if (query) { where.push(`(order_number LIKE $q OR enterprise LIKE $q)`); params.$q = `%${query}%`; }
+      if (category !== 'all') { where.push(`category = $cat`); params.$cat = category; }
+      if (clearanceFilter !== 'all') {
+        const st = clearanceFilter === 'cleared' ? 'cleared' : 'held';
+        where.push(`EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=orders.id AND c.status='${st}')`);
+      }
+      const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+      const rows = await queryAll(`SELECT id, order_number, enterprise, category FROM orders ${whereSql} ORDER BY created_at DESC LIMIT $limit OFFSET $offset`, params);
       setResults(rows);
+      const countRows = await queryAll(`SELECT COUNT(*) as c FROM orders ${whereSql}`, params);
+      setTotal(countRows[0]?.c || 0);
     } finally {
       setLoading(false);
     }
@@ -272,9 +286,29 @@ export const AcceptanceTraceability: React.FC = () => {
 
   return (
     <div className="h-[calc(100vh-100px)] min-h-[600px] w-full p-2">
-      <div className="mb-3 flex items-center gap-2">
-        <input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="检索商品/企业/订单号" className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
-        <GlowButton size="sm" onClick={handleSearch}>检索</GlowButton>
+      <div className="hud-panel p-3 mb-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+          <input value={query} onChange={(e)=>{ setPage(1); setQuery(e.target.value) }} placeholder="检索商品/企业/订单号" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
+          <select value={category} onChange={(e)=>{ setPage(1); setCategory(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+            <option value="all">全部品类</option>
+            <option value="beauty">美妆</option>
+            <option value="electronics">电子</option>
+            <option value="wine">酒水</option>
+            <option value="textile">纺织</option>
+            <option value="appliance">家电</option>
+          </select>
+          <select value={clearanceFilter} onChange={(e)=>{ setPage(1); setClearanceFilter(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+            <option value="all">通关状态: 全部</option>
+            <option value="cleared">通关状态: 已放行</option>
+            <option value="held">通关状态: 异常拦截</option>
+          </select>
+          <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+            <option value={10}>10/页</option>
+            <option value={20}>20/页</option>
+            <option value={50}>50/页</option>
+          </select>
+          <GlowButton size="sm" onClick={handleSearch}>检索</GlowButton>
+        </div>
       </div>
       {!selected && (
         <div className="mb-4 p-3 bg-slate-800/50 border border-slate-700 rounded">
@@ -285,6 +319,14 @@ export const AcceptanceTraceability: React.FC = () => {
                 {r.order_number} ・ {r.enterprise} ・ {r.category}
               </button>
             ))}
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <div className="text-xs text-gray-400">共 {total} 条</div>
+            <div className="flex items-center gap-2">
+              <button onClick={()=>{ setPage(p=>Math.max(1,p-1)); handleSearch() }} className="px-3 py-1 rounded border border-slate-700 bg-slate-800/60 text-white disabled:opacity-50" disabled={page<=1}>上一页</button>
+              <div className="px-3 py-1 rounded border border-slate-700 bg-slate-800/60 text-white">第 {page} 页</div>
+              <button onClick={()=>{ setPage(p=> (p*pageSize < total) ? p+1 : p); handleSearch() }} className="px-3 py-1 rounded border border-slate-700 bg-slate-800/60 text-white disabled:opacity-50" disabled={page*pageSize>=total}>下一页</button>
+            </div>
           </div>
         </div>
       )}

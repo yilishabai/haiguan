@@ -3,7 +3,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { HudPanel, DataCard, MetricDisplay, StatusBadge } from '../components/ui/HudPanel';
 import LogisticsMap from '../components/charts/LogisticsMap';
 import { useNavigate } from 'react-router-dom';
-import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getSettings } from '../lib/sqlite';
+import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getSettings, getTradeStreamBatch, pushTradeEvents, getTodayGMV, getPortsCongestion, consistencyCheck } from '../lib/sqlite';
 import { 
   TrendingUp,
   Package,
@@ -24,6 +24,11 @@ export const Dashboard: React.FC = () => {
   const [categories, setCategories] = useState<{ name: string; value: number; color: string }[]>([]);
   const [funnel, setFunnel] = useState<{ stage: string; count: number }[]>([]);
   const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [flows, setFlows] = useState<Array<{ from:[number,number], to:[number,number], tooltip?:string }>>([]);
+  const [gmvToday, setGmvToday] = useState(0);
+  const [tps, setTps] = useState(0);
+  const [ports, setPorts] = useState<{ port:string; index:number }[]>([]);
+  const [syncDelay, setSyncDelay] = useState(0);
 
   useEffect(() => {
     const load = async () => {
@@ -36,21 +41,19 @@ export const Dashboard: React.FC = () => {
       setCategories(c.map(x=>({ name: x.name === 'beauty' ? '美妆' : x.name === 'wine' ? '酒水' : x.name === 'appliance' ? '家电' : x.name, value: x.value, color: x.color })));
       setFunnel(f);
       setLastUpdate(new Date());
+      const batch = await getTradeStreamBatch(0, 6000);
+      const geo = (city:string):[number,number] => ({
+        '上海':[121.4917,31.2333], '深圳':[114.0579,22.5431], '广州':[113.2644,23.1291], '宁波':[121.549,29.868], '青岛':[120.3826,36.0671], '天津':[117.2,39.085], '厦门':[118.089,24.4798],
+        '纽约':[-74.006,40.7128], '洛杉矶':[-118.2437,34.0522], '伦敦':[-0.1276,51.5074], '鹿特丹':[4.4777,51.9244], '汉堡':[9.9937,53.5511], '巴黎':[2.3522,48.8566], '马德里':[-3.7038,40.4168],
+        '东京':[139.6917,35.6895], '大阪':[135.5022,34.6937], '新加坡':[103.8198,1.3521], '吉隆坡':[101.6869,3.139], '曼谷':[100.5018,13.7563]
+      }[city] || [116.4074,39.9042]);
+      setFlows(batch.map((b:any)=>({ from: geo(b.fromCity), to: geo(b.toCity), tooltip: `${b.fromCity} → ${b.toCity} $${b.amount}` })));
+      setGmvToday(await getTodayGMV());
+      setPorts((await getPortsCongestion()).map((p:any)=>({ port:p.port, index:p.index })));
+      setSyncDelay(await consistencyCheck());
     };
     load();
-    let timer: any;
-    const setup = async () => {
-      try {
-        const rows = await getSettings();
-        const val = rows.find((r: any) => r.key === 'sync_interval')?.value || '5000';
-        const delay = Math.max(1000, parseInt(val) || 5000);
-        timer = setInterval(load, delay);
-      } catch (_) {
-        timer = setInterval(load, 5000);
-      }
-    };
-    setup();
-    return () => { if (timer) clearInterval(timer); };
+    return () => {};
   }, []);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -88,8 +91,8 @@ export const Dashboard: React.FC = () => {
       {/* 核心业务 KPI */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <DataCard
-          title="GMV (总交易额)"
-          value={`¥ ${metrics.gmv.toLocaleString()}`}
+          title="GMV (今日出口额)"
+          value={`¥ ${gmvToday.toFixed(2)}`}
           trend="up"
           status="active"
           onClick={() => navigate('/collaboration')}
@@ -115,16 +118,16 @@ export const Dashboard: React.FC = () => {
         </DataCard>
 
         <DataCard
-          title="通关效率"
-          value={metrics.customsRate.toFixed(1)}
-          unit="%"
+          title="协同TPS"
+          value={tps.toFixed(2)}
+          unit=""
           trend="stable"
           status="active"
           onClick={() => navigate('/acceptance')}
         >
           <div className="mt-4 flex items-center justify-between">
             <CheckCircle className="text-emerald-green" size={24} />
-            <span className="text-xs text-gray-400">清关通过率</span>
+            <span className="text-xs text-gray-400">实时吞吐量</span>
           </div>
         </DataCard>
 
@@ -143,9 +146,10 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* 中心视觉（英雄区）：全球物流地图 */}
-      <HudPanel title="全球物流态势" subtitle="跨境流向与口岸集群">
-        <LogisticsMap height={420} />
+      <HudPanel title="跨境供应链态势感知" subtitle="全球流向图">
+        <LogisticsMap height={420} flows={flows} />
       </HudPanel>
+      
 
       {/* 辅助业务视图 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -214,6 +218,19 @@ export const Dashboard: React.FC = () => {
         </HudPanel>
       </div>
 
+      {/* 异常监控雷达：全球主要港口拥堵指数 */}
+      <HudPanel title="异常监控雷达" subtitle="全球主要港口拥堵指数">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {ports.map(p=> (
+            <div key={p.port} className="hud-subpanel p-3">
+              <div className="text-xs text-gray-400 mb-1">{p.port}</div>
+              <div className="digital-display text-emerald-green text-2xl">{p.index.toFixed(1)}</div>
+              <div className="text-xs text-gray-500">拥堵指数</div>
+            </div>
+          ))}
+        </div>
+      </HudPanel>
+
 
       {/* 业务流程漏斗 */}
       <HudPanel title="流程漏斗" subtitle="订单 → 支付 → 通关 → 物流 → 仓库">
@@ -237,7 +254,7 @@ export const Dashboard: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <MetricDisplay
             label="数据一致性延时"
-            value={metrics.dataSyncDelay.toFixed(1)}
+            value={(syncDelay || metrics.dataSyncDelay).toFixed(1)}
             unit="秒"
             icon={<Zap size={16} />}
             change={-12}

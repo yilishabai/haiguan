@@ -8,41 +8,61 @@ export const CollaborationWorkbench: React.FC = () => {
   const [copilotOpen, setCopilotOpen] = useState(true)
   const [tasks, setTasks] = useState<{ id:string; orderId:string; title:string; route:string; tags:string[]; payStatus?:string; customsStatus?:string; logisticsStatus?:string }[]>([])
   const [metrics, setMetrics] = useState<{ pending:number; customsAmount:number; blocked:number }>({ pending:0, customsAmount:0, blocked:0 })
+  const [q, setQ] = useState('')
+  const [category, setCategory] = useState<'all'|'beauty'|'electronics'|'wine'|'textile'|'appliance'>('all')
+  const [onlyAbnormal, setOnlyAbnormal] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [total, setTotal] = useState(0)
+
+  const load = async () => {
+    const where: string[] = []
+    const params: any = { $limit: pageSize, $offset: (page-1)*pageSize }
+    if (q) { where.push(`(o.order_number LIKE $q OR o.enterprise LIKE $q)`); params.$q = `%${q}%` }
+    if (category !== 'all') { where.push(`o.category = $cat`); params.$cat = category }
+    if (onlyAbnormal) { where.push(`EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id AND c.status='held')`) }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+    const rows = await queryAll(`
+      SELECT o.id as id, o.order_number as orderNo, o.enterprise as ent, o.category as cat,
+             (SELECT status FROM settlements s WHERE s.order_id=o.id LIMIT 1) as payStatus,
+             (SELECT status FROM customs_clearances c WHERE c.order_id=o.id LIMIT 1) as customsStatus,
+             (SELECT origin||' -> '||destination FROM logistics l WHERE l.order_id=o.id ORDER BY l.id DESC LIMIT 1) as route,
+             (SELECT status FROM logistics l WHERE l.order_id=o.id ORDER BY l.id DESC LIMIT 1) as logisticsStatus
+      FROM orders o
+      ${whereSql}
+      ORDER BY o.created_at DESC LIMIT $limit OFFSET $offset
+    `, params)
+    const t = rows.map(r => {
+      const tags = [] as string[]
+      if (r.customsStatus==='declared') tags.push('待报关')
+      if (r.customsStatus==='held') tags.push('异常阻断')
+      if (r.payStatus==='processing') tags.push('支付处理中')
+      if (r.payStatus==='pending') tags.push('待支付')
+      if (!tags.length) tags.push('处理中')
+      const catTag = r.cat==='beauty'?'美妆':r.cat==='wine'?'酒水':r.cat==='appliance'?'家电':r.cat==='electronics'?'电子':'纺织'
+      tags.push(catTag)
+      return { id: r.orderNo, orderId: r.id, title: r.ent, route: r.route || '🇫🇷 -> 🇨🇳', tags, payStatus: r.payStatus, customsStatus: r.customsStatus, logisticsStatus: r.logisticsStatus }
+    })
+    setTasks(t)
+    const countRow = await queryAll(`SELECT COUNT(*) as c FROM orders o ${whereSql}`, params)
+    setTotal(countRow[0]?.c || 0)
+    const mrows = await queryAll(`
+      SELECT 
+        (SELECT COUNT(*) FROM orders WHERE status!='completed') as pending,
+        (SELECT IFNULL(SUM(o.amount),0) FROM orders o WHERE date(o.created_at)=date('now') AND EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id)) as customsAmount,
+        (SELECT COUNT(*) FROM customs_clearances WHERE status='held') as blocked
+    `)
+    setMetrics({ pending: mrows[0]?.pending || 0, customsAmount: Math.round((mrows[0]?.customsAmount || 0)/1000)/1000, blocked: mrows[0]?.blocked || 0 })
+  }
 
   useEffect(() => {
-    const load = async () => {
-      const rows = await queryAll(`
-        SELECT o.id as id, o.order_number as orderNo, o.enterprise as ent, o.category as cat,
-               (SELECT status FROM settlements s WHERE s.order_id=o.id LIMIT 1) as payStatus,
-               (SELECT status FROM customs_clearances c WHERE c.order_id=o.id LIMIT 1) as customsStatus,
-               (SELECT origin||' -> '||destination FROM logistics l WHERE l.order_id=o.id ORDER BY l.id DESC LIMIT 1) as route,
-               (SELECT status FROM logistics l WHERE l.order_id=o.id ORDER BY l.id DESC LIMIT 1) as logisticsStatus
-        FROM orders o
-        ORDER BY o.created_at DESC LIMIT 20
-      `)
-      const t = rows.map(r => {
-        const tags = [] as string[]
-        if (r.customsStatus==='declared') tags.push('待报关')
-        if (r.customsStatus==='held') tags.push('异常阻断')
-        if (r.payStatus==='processing') tags.push('支付处理中')
-        if (r.payStatus==='pending') tags.push('待支付')
-        if (!tags.length) tags.push('处理中')
-        const catTag = r.cat==='beauty'?'美妆':r.cat==='wine'?'酒水':r.cat==='appliance'?'家电':r.cat==='electronics'?'电子':'纺织'
-        tags.push(catTag)
-        return { id: r.orderNo, orderId: r.id, title: r.ent, route: r.route || '🇫🇷 -> 🇨🇳', tags, payStatus: r.payStatus, customsStatus: r.customsStatus, logisticsStatus: r.logisticsStatus }
-      })
-      setTasks(t)
-
-      const mrows = await queryAll(`
-        SELECT 
-          (SELECT COUNT(*) FROM orders WHERE status!='completed') as pending,
-          (SELECT IFNULL(SUM(o.amount),0) FROM orders o WHERE date(o.created_at)=date('now') AND EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id)) as customsAmount,
-          (SELECT COUNT(*) FROM customs_clearances WHERE status='held') as blocked
-      `)
-      setMetrics({ pending: mrows[0]?.pending || 0, customsAmount: Math.round((mrows[0]?.customsAmount || 0)/1000)/1000, blocked: mrows[0]?.blocked || 0 })
-    }
-    load()
+    const id = setTimeout(() => { void load() }, 0)
+    return () => clearTimeout(id)
   }, [])
+  useEffect(() => {
+    const id = setTimeout(() => { void load() }, 0)
+    return () => clearTimeout(id)
+  }, [q, category, onlyAbnormal, page, pageSize])
 
   return (
     <div className="space-y-6">
@@ -64,6 +84,30 @@ export const CollaborationWorkbench: React.FC = () => {
           <div className="hud-panel p-3">
             <div className="text-xs text-gray-400">异常阻断</div>
             <div className="digital-display text-alert-red text-xl">{metrics.blocked}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="hud-panel p-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <input value={q} onChange={(e)=>{ setPage(1); setQ(e.target.value) }} placeholder="订单号/企业" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
+          <select value={category} onChange={(e)=>{ setPage(1); setCategory(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+            <option value="all">全部品类</option>
+            <option value="beauty">美妆</option>
+            <option value="electronics">电子</option>
+            <option value="wine">酒水</option>
+            <option value="textile">纺织</option>
+            <option value="appliance">家电</option>
+          </select>
+          <label className="inline-flex items-center gap-2 text-sm text-gray-300">
+            <input type="checkbox" checked={onlyAbnormal} onChange={(e)=>{ setPage(1); setOnlyAbnormal(e.target.checked) }} /> 仅显示异常
+          </label>
+          <div className="flex items-center justify-end gap-2">
+            <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-2 text-white w-24">
+              <option value={10}>10/页</option>
+              <option value={20}>20/页</option>
+              <option value={50}>50/页</option>
+            </select>
           </div>
         </div>
       </div>
@@ -151,6 +195,15 @@ export const CollaborationWorkbench: React.FC = () => {
               </div>
             </div>
           </HudPanel>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-gray-400">共 {total} 条</div>
+        <div className="flex items-center gap-2">
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} className="px-3 py-1 rounded border border-slate-700 bg-slate-800/60 text-white disabled:opacity-50" disabled={page<=1}>上一页</button>
+          <div className="px-3 py-1 rounded border border-slate-700 bg-slate-800/60 text-white">第 {page} 页</div>
+          <button onClick={()=>setPage(p=> (p*pageSize < total) ? p+1 : p)} className="px-3 py-1 rounded border border-slate-700 bg-slate-800/60 text-white disabled:opacity-50" disabled={page*pageSize>=total}>下一页</button>
         </div>
       </div>
 

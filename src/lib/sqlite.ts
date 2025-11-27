@@ -186,6 +186,20 @@ function seed(db: Database) {
       endDate TEXT,
       comments TEXT
     );
+    CREATE TABLE IF NOT EXISTS trade_stream (
+      id TEXT PRIMARY KEY,
+      order_id TEXT,
+      from_city TEXT,
+      to_city TEXT,
+      amount REAL,
+      ts TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS ports_congestion (
+      port TEXT PRIMARY KEY,
+      idx REAL,
+      updated_at TEXT
+    );
   `)
 
   const now = Date.now()
@@ -327,6 +341,29 @@ function seed(db: Database) {
   ].forEach(m=>{
     db.run(`INSERT INTO audit_logs(message,created_at) VALUES($m,$t)`,{ $m:m, $t:new Date().toISOString() })
   })
+
+  ;[
+    { port:'洛杉矶', idx: 62.5 },
+    { port:'鹿特丹', idx: 48.2 },
+    { port:'大阪', idx: 35.7 }
+  ].forEach(p=>{
+    db.run(`INSERT INTO ports_congestion(port,idx,updated_at) VALUES($p,$i,$t)`,{ $p:p.port, $i:p.idx, $t:new Date().toISOString() })
+  })
+
+  const cnCities = ['上海','深圳','广州','宁波','青岛','天津','厦门']
+  const worldCities = ['纽约','洛杉矶','伦敦','鹿特丹','汉堡','巴黎','马德里','东京','大阪','新加坡','吉隆坡','曼谷']
+  const orders = db.exec(`SELECT id FROM orders`)[0]?.values || []
+  const pickOrder = () => orders[Math.floor(Math.random()*orders.length)]?.[0] || 'O10000'
+  let seq = 1
+  for (let i=0; i<12000; i++) {
+    const from = cnCities[Math.floor(Math.random()*cnCities.length)]
+    const to = worldCities[Math.floor(Math.random()*worldCities.length)]
+    const amt = Math.round((1000 + Math.random()*50000) * 100) / 100
+    const ts = new Date(Date.now() - Math.floor(Math.random()*6*3600*1000)).toISOString()
+    db.run(`INSERT INTO trade_stream(id,order_id,from_city,to_city,amount,ts) VALUES($id,$oid,$f,$t,$a,$ts)`,{
+      $id:'TS'+(seq++),$oid:pickOrder(),$f:from,$t:to,$a:amt,$ts:ts
+    })
+  }
 
   ;[
     { id:'1', no:'APP20241227001', ent:'上海美妆集团有限公司', cat:'beauty', type:'new', st:'under_review', sub:'2024-12-15', exp:'2025-01-15', prio:'high', comp:94.2, risk:28, rev:'张审核员', prog:67.5 },
@@ -709,3 +746,77 @@ export async function getReviewWorkflows() {
 export async function updateLogisticsStatus(id: string, status: string) {
   await exec(`UPDATE logistics SET status=$st WHERE id=$id`, { $st: status, $id: id })
 }
+
+export async function getTradeStreamBatch(offset: number, limit: number) {
+  return queryAll(`SELECT id, order_id as orderId, from_city as fromCity, to_city as toCity, amount, ts FROM trade_stream ORDER BY ts DESC LIMIT $limit OFFSET $offset`,{ $limit: limit, $offset: offset })
+}
+
+export async function getPortsCongestion() {
+  return queryAll(`SELECT port, idx as index, updated_at as updatedAt FROM ports_congestion`)
+}
+
+export async function updatePortCongestion(port: string, index: number) {
+  await exec(`UPDATE ports_congestion SET idx=$i, updated_at=$t WHERE port=$p`,{ $i:index, $t:new Date().toISOString(), $p:port })
+}
+
+export async function getTodayGMV() {
+  const rows = await queryAll(`SELECT IFNULL(SUM(amount),0) as gmv FROM trade_stream WHERE date(ts)=date('now')`)
+  return Math.round((rows[0]?.gmv || 0) * 100) / 100
+}
+
+export async function pushTradeEvents(count: number) {
+  // Simulate stream by updating ts of random events to now
+  const ids = await queryAll(`SELECT id FROM trade_stream ORDER BY RANDOM() LIMIT $c`,{ $c: count })
+  for (const r of ids) {
+    await exec(`UPDATE trade_stream SET ts=$t WHERE id=$id`,{ $t:new Date().toISOString(), $id:r.id })
+  }
+}
+
+export async function consistencyCheck() {
+  // Compute simple consistency: compare order status vs latest logistics/customs/settlement presence
+  const total = (await queryAll(`SELECT COUNT(*) as c FROM orders`))[0]?.c || 1
+  const okCustoms = (await queryAll(`SELECT COUNT(*) as c FROM customs_clearances WHERE status='cleared'`))[0]?.c || 0
+  const blockedLogistics = (await queryAll(`SELECT COUNT(*) as c FROM logistics WHERE status='customs' OR status='pickup'`))[0]?.c || 0
+  const settled = (await queryAll(`SELECT COUNT(*) as c FROM settlements WHERE status='completed'`))[0]?.c || 0
+  const score = Math.max(0, Math.min(2, 2 - ((blockedLogistics/total) + ((total - okCustoms)/total)*0.5)))
+  await exec(`INSERT OR REPLACE INTO system_metrics(key,value) VALUES('data_sync_delay',$v)`,{ $v: score })
+  return score
+}
+  try {
+    const info = db.exec(`PRAGMA table_info(business_models)`)
+    const cols = (info[0]?.values || []).map((row:any[]) => row[1])
+    if (!cols.includes('code')) {
+      db.run(`ALTER TABLE business_models ADD COLUMN code TEXT`)
+      db.run(`UPDATE business_models SET code=$code WHERE id='beauty-model'`,{ $code:`def beauty_model(order):
+  # NMPA 合规性 + 过敏成分校验
+  check_nmpa(order)
+  validate_ingredients(order)
+  return plan(order)` })
+      db.run(`UPDATE business_models SET code=$code WHERE id='wine-model'`,{ $code:`def wine_model(order):
+  # 酒类许可证 + 年龄验证 + 税率
+  check_license(order)
+  verify_age(order)
+  compute_tax(order)
+  return plan(order)` })
+      db.run(`UPDATE business_models SET code=$code WHERE id='appliance-model'`,{ $code:`def appliance_model(order):
+  # 3C认证 + 能效 + 售后策略
+  verify_3c(order)
+  check_energy_label(order)
+  configure_service(order)
+  return plan(order)` })
+    }
+  } catch (e) {}
+
+  try {
+    // Seed ports_congestion if empty
+    const cnt = db.exec(`SELECT COUNT(*) FROM ports_congestion`)[0]?.values?.[0]?.[0] || 0
+    if (cnt === 0) {
+      ;[
+        { port:'洛杉矶', idx: 62.5 },
+        { port:'鹿特丹', idx: 48.2 },
+        { port:'大阪', idx: 35.7 }
+      ].forEach(p=>{
+        db.run(`INSERT INTO ports_congestion(port,idx,updated_at) VALUES($p,$i,$t)`,{ $p:p.port, $i:p.idx, $t:new Date().toISOString() })
+      })
+    }
+  } catch (e) {}

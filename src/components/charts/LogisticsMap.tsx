@@ -4,9 +4,10 @@ import { getSettings } from '../../lib/sqlite'
 
 interface LogisticsMapProps {
   height?: number | string
+  flows?: Array<{ from: [number, number]; to: [number, number]; tooltip?: string }>
 }
 
-export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400 }) => {
+export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows = [] }) => {
   const ref = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<echarts.ECharts | null>(null)
 
@@ -21,25 +22,23 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400 }) => {
 
       try {
         const providers: Record<string, string> = {
-          jsdelivr: 'https://fastly.jsdelivr.net/npm/echarts@5/map/json/world.json',
-          unpkg: 'https://unpkg.com/echarts@5/map/json/world.json',
+          jsdelivr: 'https://fastly.jsdelivr.net/npm/echarts-countries-js@1.2.0/world.json',
+          unpkg: 'https://unpkg.com/echarts-countries-js@1.2.0/world.json',
           cdnjs: 'https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/map/json/world.json'
         }
-        let urls = [providers.jsdelivr, providers.unpkg, providers.cdnjs]
+        let urls = [providers.jsdelivr, providers.unpkg, providers.cdnjs, '/world.json']
         try {
           const rows = await getSettings()
           const p = rows.find((r: any) => r.key === 'map_provider')?.value || 'jsdelivr'
           const primary = providers[p] || providers.jsdelivr
-          urls = [primary, ...Object.values(providers).filter(u => u !== primary)]
+          urls = [primary, ...Object.values(providers).filter(u => u !== primary), '/world.json']
         } catch (_) {}
-        let ok = false
         for (const url of urls) {
           try {
             const resp = await fetch(url)
             if (resp.ok) {
               const world = await resp.json()
               echarts.registerMap('world', world)
-              ok = true
               break
             }
           } catch (_) {}
@@ -60,7 +59,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400 }) => {
       const destinations = [shanghai, ningbo, shenzhen, tianjin]
       const origins = [rotterdam, hamburg, tokyo, osaka]
 
-      const linesData = origins.flatMap((o) =>
+      const defaultLines = origins.flatMap((o) =>
         destinations.map((d) => ({
           coords: [o.coord, d.coord],
           value: 1,
@@ -119,7 +118,8 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400 }) => {
                 opacity: 0.8,
                 curveness: 0.2
               },
-              data: linesData
+              progressive: 4000,
+              data: (flows.length ? flows.map(f=>({ coords:[f.from, f.to], value:1, tooltip: f.tooltip })) : defaultLines)
             },
             {
               type: 'effectScatter',
