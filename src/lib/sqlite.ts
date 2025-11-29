@@ -611,6 +611,7 @@ function migrate(db: Database) {
       }
     }
     if (!cols.includes('mode')) { db.run(`ALTER TABLE logistics ADD COLUMN mode TEXT`) }
+    if (!cols.includes('carrier')) { db.run(`ALTER TABLE logistics ADD COLUMN carrier TEXT`) }
     if (!cols.includes('etd')) { db.run(`ALTER TABLE logistics ADD COLUMN etd TEXT`) }
     if (!cols.includes('eta')) { db.run(`ALTER TABLE logistics ADD COLUMN eta TEXT`) }
     if (!cols.includes('atd')) { db.run(`ALTER TABLE logistics ADD COLUMN atd TEXT`) }
@@ -634,6 +635,8 @@ function migrate(db: Database) {
     const info = db.exec(`PRAGMA table_info(orders)`)
     const cols = (info[0]?.values || []).map((row:any[]) => row[1])
     if (!cols.includes('incoterms')) { db.run(`ALTER TABLE orders ADD COLUMN incoterms TEXT`) }
+    if (!cols.includes('trade_terms')) { db.run(`ALTER TABLE orders ADD COLUMN trade_terms TEXT`) }
+    if (!cols.includes('route')) { db.run(`ALTER TABLE orders ADD COLUMN route TEXT`) }
     if (!cols.includes('pi_no')) { db.run(`ALTER TABLE orders ADD COLUMN pi_no TEXT`) }
     if (!cols.includes('ci_no')) { db.run(`ALTER TABLE orders ADD COLUMN ci_no TEXT`) }
     if (!cols.includes('pl_no')) { db.run(`ALTER TABLE orders ADD COLUMN pl_no TEXT`) }
@@ -1076,6 +1079,24 @@ export async function upsertCustomsHeader(h: {
   declareDate?: string,
   orderId?: string
 }) {
+  await fetch('/api/customs/headers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: h.id,
+      declaration_no: h.declarationNo,
+      enterprise: h.enterprise || '',
+      consignor: h.consignor || '',
+      consignee: h.consignee || '',
+      port_code: h.portCode || '',
+      trade_mode: h.tradeMode || '',
+      currency: h.currency || 'CNY',
+      total_value: h.totalValue || 0,
+      status: h.status || 'declared',
+      declare_date: h.declareDate || new Date().toISOString().slice(0,10),
+      order_id: h.orderId || ''
+    })
+  })
   await ensureCustomsTables()
   await exec(`INSERT INTO customs_headers(id,declaration_no,enterprise,consignor,consignee,port_code,trade_mode,currency,total_value,gross_weight,net_weight,packages,country_origin,country_dest,status,declare_date,order_id,updated_at)
               VALUES($id,$no,$ent,$sn,$se,$pc,$tm,$cur,$tv,$gw,$nw,$pkg,$co,$cd,$st,$dd,$oid,$upd)
@@ -1085,8 +1106,9 @@ export async function upsertCustomsHeader(h: {
                 country_dest=$cd, status=$st, declare_date=$dd, order_id=$oid, updated_at=$upd`,{
     $id:h.id,$no:h.declarationNo,$ent:h.enterprise||'',$sn:h.consignor||'',$se:h.consignee||'',$pc:h.portCode||'',
     $tm:h.tradeMode||'',$cur:h.currency||'CNY',$tv:h.totalValue||0,$gw:h.grossWeight||0,$nw:h.netWeight||0,
-    $pkg:h.packages||0,$co:h.countryOrigin||'',$cd:h.countryDest||'',$st:h.status||'declared',
-    $dd:h.declareDate||new Date().toISOString().slice(0,10),$oid:h.orderId||'',$upd:new Date().toISOString()
+    $pkg:h.packages||0,$co:h.countryOrigin||'',$cd:h.countryDest||'',
+    $st:h.status||'declared',$dd:h.declareDate||new Date().toISOString().slice(0,10),$oid:h.orderId||'',
+    $upd:new Date().toISOString()
   })
 }
 
@@ -1107,13 +1129,35 @@ export async function insertCustomsItem(it: {
   excise?: number,
   vat?: number
 }) {
+  await fetch('/api/customs/items', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: it.id,
+      header_id: it.headerId,
+      line_no: it.lineNo || 0,
+      hs_code: it.hsCode || '',
+      name: it.name || '',
+      spec: it.spec || '',
+      unit: it.unit || '',
+      qty: it.qty || 0,
+      unit_price: it.unitPrice || 0,
+      amount: it.amount || 0,
+      origin_country: it.originCountry || '',
+      tax_rate: it.taxRate || 0,
+      tariff: it.tariff || 0,
+      excise: it.excise || 0,
+      vat: it.vat || 0
+    })
+  })
   await ensureCustomsTables()
   await exec(`INSERT INTO customs_items(id,header_id,line_no,hs_code,name,spec,unit,qty,unit_price,amount,origin_country,tax_rate,tariff,excise,vat)
               VALUES($id,$hid,$ln,$hs,$name,$spec,$unit,$qty,$up,$amt,$oc,$tr,$tar,$ex,$vat)
               ON CONFLICT(id) DO UPDATE SET
                 header_id=$hid, line_no=$ln, hs_code=$hs, name=$name, spec=$spec, unit=$unit, qty=$qty, unit_price=$up,
                 amount=$amt, origin_country=$oc, tax_rate=$tr, tariff=$tar, excise=$ex, vat=$vat`,{
-    $id:it.id,$hid:it.headerId,$ln:it.lineNo||0,$hs:it.hsCode||'',$name:it.name||'',$spec:it.spec||'',
+    $id:it.id,$hid:it.headerId,$ln:it.lineNo||0,$hs:it.hsCode||'',
+    $name:it.name||'',$spec:it.spec||'',
     $unit:it.unit||'',$qty:it.qty||0,$up:it.unitPrice||0,$amt:it.amount||0,$oc:it.originCountry||'',
     $tr:it.taxRate||0,$tar:it.tariff||0,$ex:it.excise||0,$vat:it.vat||0
   })
@@ -1135,60 +1179,44 @@ export function computeTaxes(hsCode: string, amount: number) {
 }
 
 export async function getCustomsHeadersPaged(q: string, status: string, portCode: string, tradeMode: string, offset: number, limit: number, hsChap?: string, hsHead?: string, hsSub?: string, onlyBadHs?: boolean, onlyMissingUnit?: boolean, onlyAbnormalQty?: boolean) {
-  await ensureCustomsTables()
-  const where: string[] = []
-  const params: any = { $offset: offset, $limit: limit }
-  if (q) { where.push(`(declaration_no LIKE $q OR enterprise LIKE $q OR consignor LIKE $q OR consignee LIKE $q)`); params.$q = `%${q}%` }
-  if (status && status!=='all') { where.push(`status = $st`); params.$st = status }
-  if (portCode && portCode!=='all') { where.push(`port_code = $pc`); params.$pc = portCode }
-  if (tradeMode && tradeMode!=='all') { where.push(`trade_mode = $tm`); params.$tm = tradeMode }
-  if (hsChap && hsChap!=='all') {
-    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND substr(replace(ci.hs_code,'.',''),1,2)=$chap)`)
-    params.$chap = hsChap
-  }
-  if (hsHead && hsHead!=='all') {
-    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND substr(replace(ci.hs_code,'.',''),1,4)=$head)`)
-    params.$head = hsHead
-  }
-  if (hsSub && hsSub!=='all') {
-    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND replace(ci.hs_code,'.','')=$sub)`)
-    params.$sub = hsSub
-  }
-  if (onlyBadHs) {
-    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND length(replace(ci.hs_code,'.','')) < 8)`)
-  }
-  if (onlyMissingUnit) {
-    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND (ci.unit IS NULL OR ci.unit=''))`)
-  }
-  if (onlyAbnormalQty) {
-    where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND (ci.qty IS NULL OR ci.qty<=0))`)
-  }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return queryAll(`SELECT id, declaration_no as declarationNo, enterprise, consignor, consignee, port_code as portCode, trade_mode as tradeMode, currency, total_value as totalValue, gross_weight as grossWeight, net_weight as netWeight, packages, country_origin as countryOrigin, country_dest as countryDest, status, declare_date as declareDate, order_id as orderId, updated_at as updatedAt FROM customs_headers ${whereSql} ORDER BY declare_date DESC LIMIT $limit OFFSET $offset`, params)
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (status) qs.set('status', status)
+  if (portCode) qs.set('portCode', portCode)
+  if (tradeMode) qs.set('tradeMode', tradeMode)
+  if (hsChap) qs.set('hsChap', hsChap)
+  if (hsHead) qs.set('hsHead', hsHead)
+  if (hsSub) qs.set('hsSub', hsSub)
+  if (onlyBadHs) qs.set('onlyBadHs', 'true')
+  if (onlyMissingUnit) qs.set('onlyMissingUnit', 'true')
+  if (onlyAbnormalQty) qs.set('onlyAbnormalQty', 'true')
+  qs.set('offset', String(offset))
+  qs.set('limit', String(limit))
+  const res = await fetch(`/api/customs/headers?${qs.toString()}`)
+  const data = await res.json()
+  return data
 }
 
 export async function countCustomsHeaders(q: string, status: string, portCode: string, tradeMode: string, hsChap?: string, hsHead?: string, hsSub?: string, onlyBadHs?: boolean, onlyMissingUnit?: boolean, onlyAbnormalQty?: boolean) {
-  await ensureCustomsTables()
-  const where: string[] = []
-  const params: any = {}
-  if (q) { where.push(`(declaration_no LIKE $q OR enterprise LIKE $q OR consignor LIKE $q OR consignee LIKE $q)`); params.$q = `%${q}%` }
-  if (status && status!=='all') { where.push(`status = $st`); params.$st = status }
-  if (portCode && portCode!=='all') { where.push(`port_code = $pc`); params.$pc = portCode }
-  if (tradeMode && tradeMode!=='all') { where.push(`trade_mode = $tm`); params.$tm = tradeMode }
-  if (hsChap && hsChap!=='all') { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND substr(replace(ci.hs_code,'.',''),1,2)=$chap)`); params.$chap = hsChap }
-  if (hsHead && hsHead!=='all') { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND substr(replace(ci.hs_code,'.',''),1,4)=$head)`); params.$head = hsHead }
-  if (hsSub && hsSub!=='all') { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND replace(ci.hs_code,'.','')=$sub)`); params.$sub = hsSub }
-  if (onlyBadHs) { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND length(replace(hs_code,'.','')) < 8)`) }
-  if (onlyMissingUnit) { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND (ci.unit IS NULL OR ci.unit=''))`) }
-  if (onlyAbnormalQty) { where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND (ci.qty IS NULL OR ci.qty<=0))`) }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const rows = await queryAll(`SELECT COUNT(*) as c FROM customs_headers ${whereSql}`, params)
-  return rows[0]?.c || 0
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (status) qs.set('status', status)
+  if (portCode) qs.set('portCode', portCode)
+  if (tradeMode) qs.set('tradeMode', tradeMode)
+  if (hsChap) qs.set('hsChap', hsChap)
+  if (hsHead) qs.set('hsHead', hsHead)
+  if (hsSub) qs.set('hsSub', hsSub)
+  if (onlyBadHs) qs.set('onlyBadHs', 'true')
+  if (onlyMissingUnit) qs.set('onlyMissingUnit', 'true')
+  if (onlyAbnormalQty) qs.set('onlyAbnormalQty', 'true')
+  const res = await fetch(`/api/customs/headers/count?${qs.toString()}`)
+  const json = await res.json()
+  return json.count || 0
 }
 
 export async function getCustomsItems(headerId: string) {
-  await ensureCustomsTables()
-  return queryAll(`SELECT id, header_id as headerId, line_no as lineNo, hs_code as hsCode, name, spec, unit, qty, unit_price as unitPrice, amount, origin_country as originCountry, tax_rate as taxRate, tariff, excise, vat FROM customs_items WHERE header_id=$hid ORDER BY line_no`,{ $hid: headerId })
+  const res = await fetch(`/api/customs/items/${headerId}`)
+  return await res.json()
 }
 
 export async function getHsHeadings(chapter?: string) {
@@ -1348,62 +1376,22 @@ export async function getBusinessModelForOrder(orderId: string) {
 }
 
 export async function applyBusinessModel(orderId: string) {
-  const model = await getBusinessModelForOrder(orderId)
-  if (!model) return { applied: false, compliance: 0, messages: ['未匹配到业务模型'] }
-  const chapList = JSON.parse(model.chapters || '[]') as string[]
-  const [primary] = await queryAll(`SELECT substr(replace(ci.hs_code,'.',''),1,2) as chap, ci.hs_code as hs FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=$oid ORDER BY IFNULL(ci.amount,ci.qty*ci.unit_price) DESC LIMIT 1`,{ $oid: orderId })
-  const messages: string[] = []
-  let score = 90
-  if (primary?.chap && chapList.length && !chapList.includes(primary.chap)) { messages.push('HS章节与业务模型不匹配'); score -= 15 }
-  const items = await queryAll(`SELECT id, hs_code as hs, unit, qty, unit_price as up, amount, excise FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid)`,{ $oid: orderId })
-  if (model.category === 'beauty') {
-    for (const it of items) { if (!it.unit) { messages.push('美妆商品缺少计量单位'); score -= 5; break } }
-  } else if (model.category === 'wine') {
-    for (const it of items) {
-      const hs = String(it.hs||'').replace(/\./g,'')
-      if (hs.startsWith('22') && (!it.excise || Number(it.excise)===0)) {
-        const taxes = computeTaxes(it.hs, it.amount || (it.qty||0)*(it.up||0))
-        await exec(`UPDATE customs_items SET excise=$ex WHERE id=$id`,{ $ex: taxes.excise, $id: it.id })
-        messages.push('酒类消费税自动补全')
-      }
-    }
-  } else if (model.category === 'electronics') {
-    const missingOrigin = await queryAll(`SELECT COUNT(*) as c FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid) AND (origin_country IS NULL OR origin_country='')`,{ $oid: orderId })
-    if ((missingOrigin[0]?.c || 0) > 0) { messages.push('电子产品缺少原产国'); score -= 5 }
-  } else if (model.category === 'textile') {
-    const noSpec = await queryAll(`SELECT COUNT(*) as c FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid) AND (spec IS NULL OR spec='')`,{ $oid: orderId })
-    if ((noSpec[0]?.c || 0) > 0) { messages.push('纺织品缺少规格'); score -= 5 }
-  } else if (model.category === 'appliance') {
-    const settle = await getSettlementByOrder(orderId)
-    if (!settle || settle.status!=='completed') { messages.push('家电模型建议在结算完成后安排发运'); score -= 3 }
-  }
-  const badHs = await queryAll(`SELECT COUNT(*) as c FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid) AND length(replace(hs_code,'.','')) < 8`,{ $oid: orderId })
-  if ((badHs[0]?.c || 0) > 0) { messages.push('HS编码不完整'); score -= 6 }
-  const [orderRow] = await queryAll(`SELECT incoterms FROM orders WHERE id=$id`,{ $id: orderId })
-  const inc = orderRow?.incoterms || ''
-  const [lg] = await queryAll(`SELECT mode, is_fcl as fcl, insurance_cost as ins FROM logistics WHERE order_id=$oid ORDER BY id DESC LIMIT 1`,{ $oid: orderId })
-  const hasAwb = (await queryAll(`SELECT COUNT(*) as c FROM documents WHERE order_id=$oid AND type='AWB'`,{ $oid: orderId }))[0]?.c || 0
-  const hasBl = (await queryAll(`SELECT COUNT(*) as c FROM documents WHERE order_id=$oid AND type='BL'`,{ $oid: orderId }))[0]?.c || 0
-  if (inc==='CIF') { if (!lg || !(lg.ins || 0)) { messages.push('CIF缺少保险费用'); score -= 6 } }
-  if (inc==='FOB') {
-    const ocean = (lg?.mode==='FCL' || lg?.mode==='LCL' || typeof lg?.fcl==='number')
-    if (ocean && !hasBl) { messages.push('FOB需提单单证'); score -= 5 }
-  }
-  if (lg && lg.mode==='AIR' && !hasAwb) { messages.push('空运需AWB单证'); score -= 5 }
-  if (inc==='DDP') {
-    const agg = (await queryAll(`SELECT IFNULL(SUM(tariff),0) as tariff, IFNULL(SUM(vat),0) as vat, IFNULL(SUM(excise),0) as excise FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid)`,{ $oid: orderId }))[0] || { tariff:0, vat:0, excise:0 }
-    const taxZero = ((agg.tariff || 0) + (agg.vat || 0) + (agg.excise || 0)) <= 0
-    if (taxZero) { messages.push('DDP需完税入境'); score -= 8 }
-  }
-  if (inc==='EXW') {
-    const missingOriginAny = await queryAll(`SELECT COUNT(*) as c FROM customs_items WHERE header_id IN (SELECT id FROM customs_headers WHERE order_id=$oid) AND (origin_country IS NULL OR origin_country='')`,{ $oid: orderId })
-    if ((missingOriginAny[0]?.c || 0) > 0) { messages.push('EXW缺少原产国信息'); score -= 4 }
-  }
-  if (score < 0) score = 0
-  const [clr] = await queryAll(`SELECT id FROM customs_clearances WHERE order_id=$oid LIMIT 1`,{ $oid: orderId })
-  if (clr?.id) await exec(`UPDATE customs_clearances SET compliance=$cp WHERE id=$id`,{ $cp: score, $id: clr.id })
-  for (const m of messages) await exec(`INSERT INTO audit_logs(message,created_at) VALUES($m,$t)`,{ $m:`[Model] ${m}`, $t:new Date().toISOString() })
-  return { applied: true, compliance: score, messages }
+  const qs = new URLSearchParams()
+  qs.set('orderId', orderId)
+  const res = await fetch(`/api/risk/score?${qs.toString()}`)
+  const json = await res.json()
+  return { applied: true, compliance: json.compliance || 0, messages: json.messages || [] }
+}
+
+export async function enqueueJob(type: string, payload: any) {
+  const qs = new URLSearchParams()
+  qs.set('type', type)
+  const res = await fetch(`/api/jobs?${qs.toString()}` , {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  return await res.json()
 }
 
 export async function getAlgorithmRecommendations(orderId: string) {
@@ -1812,130 +1800,205 @@ export async function advanceOrderFlow(orderId: string) {
 // --- Orders CRUD ---
 
 export async function getOrdersPaged(q: string, status: string, offset: number, limit: number) {
-  const where: string[] = []
-  const params: any = { $offset: offset, $limit: limit }
-  if (q) { where.push(`(order_number LIKE $q OR enterprise LIKE $q)`); params.$q = `%${q}%` }
-  if (status && status !== 'all') { where.push(`status = $status`); params.$status = status }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return queryAll(`SELECT id, order_number as orderNumber, enterprise, category, status, amount, currency, created_at as createdAt FROM orders ${whereSql} ORDER BY created_at DESC LIMIT $limit OFFSET $offset`, params)
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (status) qs.set('status', status)
+  qs.set('offset', String(offset))
+  qs.set('limit', String(limit))
+  const res = await fetch(`/api/orders?${qs.toString()}`)
+  const data = await res.json()
+  return data
 }
 
 export async function countOrders(q: string, status: string) {
-  const where: string[] = []
-  const params: any = {}
-  if (q) { where.push(`(order_number LIKE $q OR enterprise LIKE $q)`); params.$q = `%${q}%` }
-  if (status && status !== 'all') { where.push(`status = $status`); params.$status = status }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const rows = await queryAll(`SELECT COUNT(*) as c FROM orders ${whereSql}`, params)
-  return rows[0]?.c || 0
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (status) qs.set('status', status)
+  const res = await fetch(`/api/orders/count?${qs.toString()}`)
+  const json = await res.json()
+  return json.count || 0
 }
 
 export async function upsertOrder(o: any) {
+  await fetch('/api/orders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: o.id,
+      order_number: o.orderNumber,
+      enterprise: o.enterprise,
+      category: o.category || 'general',
+      status: o.status || 'created',
+      amount: o.amount || 0,
+      currency: o.currency || 'CNY',
+      created_at: o.createdAt || new Date().toISOString()
+    })
+  })
   await exec(`INSERT INTO orders(id,order_number,enterprise,category,status,amount,currency,created_at,updated_at)
               VALUES($id,$num,$ent,$cat,$st,$amt,$cur,$cr,$up)
               ON CONFLICT(id) DO UPDATE SET
                 order_number=$num, enterprise=$ent, category=$cat, status=$st, amount=$amt, currency=$cur, updated_at=$up`,{
     $id:o.id,$num:o.orderNumber,$ent:o.enterprise,$cat:o.category||'general',$st:o.status||'created',$amt:o.amount||0,$cur:o.currency||'CNY',$cr:o.createdAt||new Date().toISOString(),$up:new Date().toISOString()
   })
+  if (o.incoterms || o.tradeTerms || o.route) {
+    await exec(`UPDATE orders SET incoterms=$inc, trade_terms=$tt, route=$rt WHERE id=$id`,{
+      $inc: o.incoterms || null,
+      $tt: o.tradeTerms || null,
+      $rt: o.route || null,
+      $id: o.id
+    })
+  }
 }
 
 export async function deleteOrder(id: string) {
+  await fetch(`/api/orders/${id}`, { method: 'DELETE' })
   await exec(`DELETE FROM orders WHERE id=$id`, { $id: id })
 }
 
 // --- Logistics CRUD ---
 
 export async function getLogisticsPaged(q: string, status: string, offset: number, limit: number) {
-  const where: string[] = []
-  const params: any = { $offset: offset, $limit: limit }
-  if (q) { where.push(`(l.tracking_no LIKE $q OR l.origin LIKE $q OR l.destination LIKE $q OR l.order_id LIKE $q OR o.order_number LIKE $q)`); params.$q = `%${q}%` }
-  if (status && status !== 'all') { where.push(`l.status = $status`); params.$status = status }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return queryAll(`SELECT l.id, l.tracking_no as trackingNo, l.origin, l.destination, l.status, l.estimated_time as estimatedTime, l.actual_time as actualTime, l.efficiency, l.order_id as orderId, o.order_number as orderNumber, o.enterprise as enterprise FROM logistics l LEFT JOIN orders o ON o.id = l.order_id ${whereSql} ORDER BY l.id DESC LIMIT $limit OFFSET $offset`, params)
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (status) qs.set('status', status)
+  qs.set('offset', String(offset))
+  qs.set('limit', String(limit))
+  const res = await fetch(`/api/logistics?${qs.toString()}`)
+  const data = await res.json()
+  return data
 }
 
 export async function countLogistics(q: string, status: string) {
-  const where: string[] = []
-  const params: any = {}
-  if (q) { where.push(`(l.tracking_no LIKE $q OR l.origin LIKE $q OR l.destination LIKE $q OR l.order_id LIKE $q OR o.order_number LIKE $q)`); params.$q = `%${q}%` }
-  if (status && status !== 'all') { where.push(`l.status = $status`); params.$status = status }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const rows = await queryAll(`SELECT COUNT(*) as c FROM logistics l LEFT JOIN orders o ON o.id=l.order_id ${whereSql}`, params)
-  return rows[0]?.c || 0
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (status) qs.set('status', status)
+  const res = await fetch(`/api/logistics/count?${qs.toString()}`)
+  const json = await res.json()
+  return json.count || 0
 }
 
 export async function upsertLogistics(l: any) {
+  await fetch('/api/logistics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: l.id,
+      tracking_no: l.trackingNo,
+      origin: l.origin,
+      destination: l.destination,
+      status: l.status,
+      estimated_time: l.estimatedTime || 0,
+      actual_time: l.actualTime || 0,
+      efficiency: l.efficiency || 0,
+      order_id: l.orderId || ''
+    })
+  })
   await exec(`INSERT INTO logistics(id,tracking_no,origin,destination,status,estimated_time,actual_time,efficiency,order_id)
               VALUES($id,$tr,$o,$d,$s,$et,$at,$ef,$oid)
               ON CONFLICT(id) DO UPDATE SET
                 tracking_no=$tr, origin=$o, destination=$d, status=$s, estimated_time=$et, actual_time=$at, efficiency=$ef, order_id=$oid`,{
     $id:l.id,$tr:l.trackingNo,$o:l.origin,$d:l.destination,$s:l.status,$et:l.estimatedTime||0,$at:l.actualTime||0,$ef:l.efficiency||0,$oid:l.orderId||''
   })
+  if (l.mode || typeof l.isFcl !== 'undefined' || l.carrier || l.eta) {
+    await exec(`UPDATE logistics SET mode=$m, is_fcl=$f, carrier=$c, eta=$eta WHERE id=$id`,{
+      $m: l.mode || null,
+      $f: l.isFcl ? 1 : 0,
+      $c: l.carrier || null,
+      $eta: l.eta || null,
+      $id: l.id
+    })
+  }
 }
 
 export async function deleteLogistics(id: string) {
+  await fetch(`/api/logistics/${id}`, { method: 'DELETE' })
   await exec(`DELETE FROM logistics WHERE id=$id`, { $id: id })
 }
 
 // --- Settlements CRUD ---
 
 export async function getSettlementsPaged(q: string, status: string, offset: number, limit: number) {
-  const where: string[] = []
-  const params: any = { $offset: offset, $limit: limit }
-  if (q) { where.push(`(s.order_id LIKE $q OR s.id LIKE $q OR o.order_number LIKE $q)`); params.$q = `%${q}%` }
-  if (status && status !== 'all') { where.push(`s.status = $status`); params.$status = status }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return queryAll(`
-    SELECT s.id, s.order_id as orderId, o.order_number as orderNumber, o.enterprise as enterprise, s.status, s.settlement_time as settlementTime, s.risk_level as riskLevel
-    FROM settlements s LEFT JOIN orders o ON o.id = s.order_id
-    ${whereSql}
-    ORDER BY s.id DESC LIMIT $limit OFFSET $offset
-  `, params)
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (status) qs.set('status', status)
+  qs.set('offset', String(offset))
+  qs.set('limit', String(limit))
+  const res = await fetch(`/api/settlements?${qs.toString()}`)
+  const data = await res.json()
+  return data
 }
 
 export async function countSettlements(q: string, status: string) {
-  const where: string[] = []
-  const params: any = {}
-  if (q) { where.push(`(s.order_id LIKE $q OR s.id LIKE $q OR o.order_number LIKE $q)`); params.$q = `%${q}%` }
-  if (status && status !== 'all') { where.push(`s.status = $status`); params.$status = status }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const rows = await queryAll(`SELECT COUNT(*) as c FROM settlements s LEFT JOIN orders o ON o.id=s.order_id ${whereSql}`, params)
-  return rows[0]?.c || 0
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (status) qs.set('status', status)
+  const res = await fetch(`/api/settlements/count?${qs.toString()}`)
+  const json = await res.json()
+  return json.count || 0
 }
 
 export async function upsertSettlement(s: any) {
+  await fetch('/api/settlements', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: s.id,
+      order_id: s.orderId,
+      status: s.status,
+      settlement_time: s.settlementTime || 0,
+      risk_level: s.riskLevel || 'low',
+      payment_method: s.paymentMethod || null
+    })
+  })
   await exec(`INSERT INTO settlements(id,order_id,status,settlement_time,risk_level)
               VALUES($id,$oid,$st,$tm,$rl)
               ON CONFLICT(id) DO UPDATE SET
                 order_id=$oid, status=$st, settlement_time=$tm, risk_level=$rl`,{
     $id:s.id,$oid:s.orderId,$st:s.status,$tm:s.settlementTime||0,$rl:s.riskLevel||'low'
   })
+  if (s.paymentMethod) {
+    await exec(`UPDATE settlements SET payment_method=$pm WHERE id=$id`, { $pm: s.paymentMethod, $id: s.id })
+  }
 }
 
 export async function deleteSettlement(id: string) {
+  await fetch(`/api/settlements/${id}`, { method: 'DELETE' })
   await exec(`DELETE FROM settlements WHERE id=$id`, { $id: id })
 }
 
 // --- Inventory/Warehouse CRUD ---
 
 export async function getInventoryPaged(q: string, offset: number, limit: number) {
-  const where: string[] = []
-  const params: any = { $offset: offset, $limit: limit }
-  if (q) { where.push(`(name LIKE $q)`); params.$q = `%${q}%` }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return queryAll(`SELECT name, current, target, production, sales, efficiency FROM inventory ${whereSql} ORDER BY name LIMIT $limit OFFSET $offset`, params)
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  qs.set('offset', String(offset))
+  qs.set('limit', String(limit))
+  const res = await fetch(`/api/inventory?${qs.toString()}`)
+  const data = await res.json()
+  return data
 }
 
 export async function countInventory(q: string) {
-  const where: string[] = []
-  const params: any = {}
-  if (q) { where.push(`(name LIKE $q)`); params.$q = `%${q}%` }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const rows = await queryAll(`SELECT COUNT(*) as c FROM inventory ${whereSql}`, params)
-  return rows[0]?.c || 0
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  const res = await fetch(`/api/inventory/count?${qs.toString()}`)
+  const json = await res.json()
+  return json.count || 0
 }
 
 export async function upsertInventory(i: any) {
+  await fetch('/api/inventory', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: i.name,
+      current: i.current || 0,
+      target: i.target || 0,
+      production: i.production || 0,
+      sales: i.sales || 0,
+      efficiency: i.efficiency || 0
+    })
+  })
   await exec(`INSERT INTO inventory(name,current,target,production,sales,efficiency)
               VALUES($n,$c,$tg,$p,$s,$e)
               ON CONFLICT(name) DO UPDATE SET
@@ -1945,6 +2008,7 @@ export async function upsertInventory(i: any) {
 }
 
 export async function deleteInventory(name: string) {
+  await fetch(`/api/inventory/${encodeURIComponent(name)}`, { method: 'DELETE' })
   await exec(`DELETE FROM inventory WHERE name=$n`, { $n: name })
 }
 
@@ -1956,18 +2020,22 @@ export async function getLinkableOrders(type: 'customs'|'logistics'|'settlement'
   // settlement: shipped but not paid -> simplify: orders with logistics but no settlement
   
   if (type === 'customs') {
-    return queryAll(`SELECT id, order_number FROM orders WHERE id NOT IN (SELECT order_id FROM customs_headers) AND id NOT IN (SELECT order_id FROM customs_clearances) ORDER BY created_at DESC`)
+    return queryAll(`
+      SELECT o.id, o.order_number FROM orders o 
+      WHERE NOT EXISTS(SELECT 1 FROM customs_headers ch WHERE ch.order_id IS NOT NULL AND ch.order_id!='' AND ch.order_id=o.id)
+        AND NOT EXISTS(SELECT 1 FROM customs_clearances cc WHERE cc.order_id IS NOT NULL AND cc.order_id!='' AND cc.order_id=o.id)
+      ORDER BY o.created_at DESC`)
   }
   if (type === 'logistics') {
     // Ideally: customs cleared
     return queryAll(`SELECT o.id, o.order_number FROM orders o 
-      WHERE (EXISTS(SELECT 1 FROM customs_headers ch WHERE ch.order_id=o.id AND ch.status='released') 
+      WHERE (EXISTS(SELECT 1 FROM customs_headers ch WHERE ch.order_id=o.id AND ch.status='cleared') 
              OR EXISTS(SELECT 1 FROM customs_clearances cc WHERE cc.order_id=o.id AND cc.status='cleared'))
-      AND o.id NOT IN (SELECT order_id FROM logistics)`)
+      AND NOT EXISTS(SELECT 1 FROM logistics lg WHERE lg.order_id IS NOT NULL AND lg.order_id!='' AND lg.order_id=o.id)`)
   }
   if (type === 'settlement') {
     return queryAll(`SELECT o.id, o.order_number FROM orders o 
-      WHERE o.id NOT IN (SELECT order_id FROM settlements)`)
+      WHERE NOT EXISTS(SELECT 1 FROM settlements s WHERE s.order_id IS NOT NULL AND s.order_id!='' AND s.order_id=o.id)`)
   }
   return []
 }

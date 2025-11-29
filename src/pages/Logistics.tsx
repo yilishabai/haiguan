@@ -1,13 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
-import { getLogisticsPaged, countLogistics, upsertLogistics, deleteLogistics, getLinkableOrders } from '../lib/sqlite'
+import { getLogisticsPaged, countLogistics, upsertLogistics, deleteLogistics, getLinkableOrders, enqueueJob, queryAll } from '../lib/sqlite'
 import { Truck, MapPin } from 'lucide-react'
 
 export const Logistics: React.FC = () => {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(() => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 900
+    const reserved = 360
+    const rowH = 64
+    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
+    return df
+  })
   const [total, setTotal] = useState(0)
   const [rows, setRows] = useState<any[]>([])
   const [, setLoading] = useState(false)
@@ -28,7 +34,11 @@ export const Logistics: React.FC = () => {
     setLoading(true)
     try {
       const list = await getLogisticsPaged(q, status, (page-1)*pageSize, pageSize)
-      setRows(list)
+      const enriched = await Promise.all(list.map(async (r:any) => {
+        const [ext] = await queryAll(`SELECT mode, is_fcl as isFcl, carrier, eta FROM logistics WHERE id=$id`, { $id: r.id })
+        return { ...r, mode: ext?.mode || '', isFcl: !!ext?.isFcl, carrier: ext?.carrier || '', eta: ext?.eta || '' }
+      }))
+      setRows(enriched)
       const cnt = await countLogistics(q, status)
       setTotal(cnt)
     } finally {
@@ -37,13 +47,6 @@ export const Logistics: React.FC = () => {
   }, [q, status, page, pageSize])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => {
-    const vh = window.innerHeight || 900
-    const reserved = 360
-    const rowH = 64
-    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
-    if (df !== pageSize) setPageSize(df)
-  }, [])
 
   const handleCreate = async () => {
     const orders = await getLinkableOrders('logistics')
@@ -61,6 +64,9 @@ export const Logistics: React.FC = () => {
   }
 
   const handleSave = async () => {
+    const [c] = await queryAll(`SELECT COUNT(*) as c FROM customs_headers WHERE order_id=$id AND status='cleared'`, { $id: form.orderId })
+    const cleared = Number(c?.c || 0) > 0
+    if (!cleared) { alert('该订单尚未清关，暂不允许发运'); return }
     await upsertLogistics(form)
     setShowModal(false)
     load()
@@ -147,6 +153,7 @@ export const Logistics: React.FC = () => {
                   <td className="px-4 py-3 text-emerald-400">{row.efficiency}%</td>
                   <td className="px-4 py-3">
                     <button onClick={() => handleDelete(row.id)} className="text-red-400 hover:text-red-300 text-xs underline">删除</button>
+                    <button onClick={async()=>{ const next = row.status==='pickup' ? 'transit' : 'completed'; await enqueueJob('logistics_milestone', { id: row.id, next_status: next }); setTimeout(()=>{ load() }, 800) }} className="ml-2 px-2 py-1 text-xs bg-gray-800 rounded hover:bg-gray-700">推进里程碑</button>
                   </td>
                 </tr>
               ))}
@@ -234,7 +241,7 @@ export const Logistics: React.FC = () => {
                 <select 
                   value={form.status} 
                   onChange={(e) => setForm({...form, status: e.target.value})}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白"
                 >
                   <option value="pickup">已揽收</option>
                   <option value="transit">运输中</option>
@@ -242,6 +249,50 @@ export const Logistics: React.FC = () => {
                   <option value="delivery">派送中</option>
                   <option value="completed">已签收</option>
                 </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">运输方式</label>
+                  <select 
+                    value={form.mode || ''}
+                    onChange={(e)=>setForm({...form, mode: e.target.value})}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
+                  >
+                    <option value="SEA">海运</option>
+                    <option value="AIR">空运</option>
+                    <option value="RAIL">铁路</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">箱型</label>
+                  <select 
+                    value={form.isFcl ? 'FCL' : 'LCL'}
+                    onChange={(e)=>setForm({...form, isFcl: e.target.value==='FCL'})}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
+                  >
+                    <option value="FCL">FCL</option>
+                    <option value="LCL">LCL</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">承运商</label>
+                  <input 
+                    value={form.carrier || ''}
+                    onChange={(e)=>setForm({...form, carrier: e.target.value})}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">预计到港</label>
+                  <input 
+                    type="date"
+                    value={form.eta || ''}
+                    onChange={(e)=>setForm({...form, eta: e.target.value})}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
+                  />
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">

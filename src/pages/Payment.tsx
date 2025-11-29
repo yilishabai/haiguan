@@ -1,13 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
-import { getSettlementsPaged, countSettlements, upsertSettlement, deleteSettlement, getLinkableOrders } from '../lib/sqlite'
+import { getSettlementsPaged, countSettlements, upsertSettlement, deleteSettlement, getLinkableOrders, enqueueJob, applyBusinessModel, queryAll } from '../lib/sqlite'
 import { CreditCard, ShieldCheck, AlertTriangle } from 'lucide-react'
 
 export const Payment: React.FC = () => {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(() => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 900
+    const reserved = 360
+    const rowH = 64
+    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
+    return df
+  })
   const [total, setTotal] = useState(0)
   const [rows, setRows] = useState<any[]>([])
   const [showModal, setShowModal] = useState(false)
@@ -18,24 +24,27 @@ export const Payment: React.FC = () => {
     orderId: '',
     status: 'pending',
     settlementTime: 0,
-    riskLevel: 'low'
+    riskLevel: 'low',
+    paymentMethod: 'T/T'
   })
 
   const load = useCallback(async () => {
     const list = await getSettlementsPaged(q, status, (page-1)*pageSize, pageSize)
-    setRows(list)
+    const enriched = await Promise.all(list.map(async (r:any) => {
+      const risk = await applyBusinessModel(r.orderId || r.orderID || r.order_id)
+      const [c] = await queryAll(`SELECT COUNT(*) as c FROM customs_headers WHERE order_id=$id AND status='cleared'`, { $id: r.orderId })
+      const cleared = Number(c?.c || 0) > 0
+      const [l] = await queryAll(`SELECT status FROM logistics WHERE order_id=$id ORDER BY id DESC LIMIT 1`, { $id: r.orderId })
+      const ship = String(l?.status || '')
+      const advice = !cleared ? '建议先完成清关再结算' : (ship!=='completed' ? '建议待签收后结算，降低风险' : '可即时结算')
+      return { ...r, riskScore: risk.compliance || 0, riskMsgs: risk.messages || [], advice }
+    }))
+    setRows(enriched)
     const cnt = await countSettlements(q, status)
     setTotal(cnt)
   }, [q, status, page, pageSize])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => {
-    const vh = window.innerHeight || 900
-    const reserved = 360
-    const rowH = 64
-    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
-    if (df !== pageSize) setPageSize(df)
-  }, [])
 
   const handleCreate = async () => {
     const orders = await getLinkableOrders('settlement')
@@ -45,7 +54,8 @@ export const Payment: React.FC = () => {
       orderId: orders[0]?.id || '',
       status: 'pending',
       settlementTime: 0,
-      riskLevel: 'low'
+      riskLevel: 'low',
+      paymentMethod: 'T/T'
     })
     setShowModal(true)
   }
@@ -62,9 +72,18 @@ export const Payment: React.FC = () => {
   }
 
   const completeSettlement = async (row: any) => {
-    const tm = Math.floor(Math.random() * 72) + 12
-    await upsertSettlement({ ...row, status: 'completed', settlementTime: tm })
-    load()
+    const digits = Number(String(row.id || row.orderId || '').replace(/\D/g,'')) || 0
+    const tm = (digits % 72) + 12
+    const [c] = await queryAll(`SELECT COUNT(*) as c FROM customs_headers WHERE order_id=$id AND status='cleared'`, { $id: row.orderId })
+    const cleared = Number(c?.c || 0) > 0
+    const [l] = await queryAll(`SELECT status FROM logistics WHERE order_id=$id ORDER BY id DESC LIMIT 1`, { $id: row.orderId })
+    const ship = String(l?.status || '')
+    if (!cleared || ship!=='completed') {
+      const go = confirm('订单未清关或未签收，建议暂缓结算。是否仍标记完成？')
+      if (!go) return
+    }
+    await enqueueJob('settlement_complete', { order_id: row.orderId || row.orderID || row.order_id || '', time: tm })
+    setTimeout(() => { load() }, 800)
   }
 
   const handleDelete = async (id: string) => {
@@ -116,6 +135,8 @@ export const Payment: React.FC = () => {
                 <th className="px-4 py-3">状态</th>
                 <th className="px-4 py-3">结算耗时</th>
                 <th className="px-4 py-3">风控等级</th>
+                <th className="px-4 py-3">策略提示</th>
+                <th className="px-4 py-3">合规提示</th>
                 <th className="px-4 py-3">操作</th>
               </tr>
             </thead>
@@ -140,6 +161,8 @@ export const Payment: React.FC = () => {
                       {row.riskLevel}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-xs text-gray-400">{row.advice || '-'}</td>
+                  <td className="px-4 py-3 text-xs text-amber-300">{Array.isArray(row.riskMsgs) && row.riskMsgs.length>0 ? String(row.riskMsgs[0]) : '-'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {row.status === 'pending' && (
@@ -215,6 +238,18 @@ export const Payment: React.FC = () => {
                 >
                   <option value="pending">待结算</option>
                   <option value="processing">处理中</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">支付方式</label>
+                <select 
+                  value={form.paymentMethod} 
+                  onChange={(e) => setForm({...form, paymentMethod: e.target.value})}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
+                >
+                  <option value="T/T">T/T</option>
+                  <option value="L/C">L/C</option>
+                  <option value="OA">O/A</option>
                 </select>
               </div>
               <div>

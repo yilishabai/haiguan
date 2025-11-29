@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
-import { getOrdersPaged, countOrders, upsertOrder, deleteOrder, getEnterprisesPaged } from '../lib/sqlite'
+import { getOrdersPaged, countOrders, upsertOrder, deleteOrder, getEnterprisesPaged, queryAll, applyBusinessModel } from '../lib/sqlite'
 import { ShoppingCart, RefreshCw, Upload, Plus, Trash2 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
@@ -8,7 +8,13 @@ export const OrderManagement: React.FC = () => {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(() => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 900
+    const reserved = 360
+    const rowH = 64
+    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
+    return df
+  })
   const [total, setTotal] = useState(0)
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -31,7 +37,12 @@ export const OrderManagement: React.FC = () => {
     setLoading(true)
     try {
       const list = await getOrdersPaged(q, status, (page-1)*pageSize, pageSize)
-      setRows(list)
+      const enriched = await Promise.all(list.map(async (r:any) => {
+        const [ext] = await queryAll(`SELECT incoterms, trade_terms as tradeTerms, route FROM orders WHERE id=$id`, { $id: r.id })
+        const risk = await applyBusinessModel(r.id)
+        return { ...r, incoterms: ext?.incoterms || '', tradeTerms: ext?.tradeTerms || '', route: ext?.route || '', riskScore: risk.compliance || 0, riskMsgs: risk.messages || [] }
+      }))
+      setRows(enriched)
       const cnt = await countOrders(q, status)
       setTotal(cnt)
     } finally {
@@ -40,13 +51,6 @@ export const OrderManagement: React.FC = () => {
   }, [q, status, page, pageSize])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => {
-    const vh = window.innerHeight || 900
-    const reserved = 360
-    const rowH = 64
-    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
-    if (df !== pageSize) setPageSize(df)
-  }, [])
 
   const handleCreate = () => {
     setForm({
@@ -57,6 +61,9 @@ export const OrderManagement: React.FC = () => {
       status: 'created',
       amount: 1000,
       currency: 'USD',
+      incoterms: 'FOB',
+      tradeTerms: 'T/T',
+      route: 'CN→US',
       createdAt: new Date().toISOString()
     })
     setEntOpts([])
@@ -197,6 +204,8 @@ export const OrderManagement: React.FC = () => {
                 <th className="px-4 py-3">品类</th>
                 <th className="px-4 py-3">金额</th>
                 <th className="px-4 py-3">状态</th>
+                <th className="px-4 py-3">术语/路线</th>
+                <th className="px-4 py-3">风险</th>
                 <th className="px-4 py-3">创建时间</th>
                 <th className="px-4 py-3">操作</th>
               </tr>
@@ -209,6 +218,13 @@ export const OrderManagement: React.FC = () => {
                   <td className="px-4 py-3">{row.category}</td>
                   <td className="px-4 py-3 text-emerald-400">{row.currency} {row.amount?.toLocaleString()}</td>
                   <td className="px-4 py-3"><StatusBadge status={row.status} /></td>
+                  <td className="px-4 py-3 text-xs text-gray-400">{row.incoterms || '-'} / {row.tradeTerms || '-'} / {row.route || '-'}</td>
+                  <td className="px-4 py-3 text-xs">
+                    <span className="text-cyber-cyan">{Math.round((row.riskScore||0))}</span>
+                    {Array.isArray(row.riskMsgs) && row.riskMsgs.length>0 && (
+                      <span className="ml-2 text-amber-300">{String(row.riskMsgs[0])}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{row.createdAt?.slice(0,19).replace('T',' ')}</td>
                   <td className="px-4 py-3">
                     <button onClick={() => handleDelete(row.id)} className="text-red-400 hover:text-red-300 transition-colors p-1">
@@ -371,6 +387,42 @@ export const OrderManagement: React.FC = () => {
                     <option value="EUR">EUR</option>
                     <option value="GBP">GBP</option>
                   </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Incoterms</label>
+                  <select 
+                    value={form.incoterms}
+                    onChange={(e)=>setForm({...form, incoterms: e.target.value})}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
+                  >
+                    <option value="EXW">EXW</option>
+                    <option value="FOB">FOB</option>
+                    <option value="CIF">CIF</option>
+                    <option value="DDP">DDP</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">贸易条款</label>
+                  <select 
+                    value={form.tradeTerms}
+                    onChange={(e)=>setForm({...form, tradeTerms: e.target.value})}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
+                  >
+                    <option value="T/T">T/T</option>
+                    <option value="L/C">L/C</option>
+                    <option value="OA">O/A</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">路线</label>
+                  <input 
+                    value={form.route}
+                    onChange={(e)=>setForm({...form, route: e.target.value})}
+                    placeholder="如 CN→US"
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
+                  />
                 </div>
               </div>
             </div>

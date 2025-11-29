@@ -12,7 +12,13 @@ export const CollaborationWorkbench: React.FC = () => {
   const [category, setCategory] = useState<'all'|'beauty'|'electronics'|'wine'|'textile'|'appliance'>('all')
   const [onlyAbnormal, setOnlyAbnormal] = useState(false)
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
+  const [pageSize, setPageSize] = useState(() => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 900
+    const reserved = 360
+    const rowH = 72
+    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
+    return df
+  })
   const [total, setTotal] = useState(0)
   const [methods, setMethods] = useState<{ name:string; successRate:number; avgTime:number }[]>([])
   const [selectedMethod, setSelectedMethod] = useState<string>('')
@@ -86,13 +92,6 @@ export const CollaborationWorkbench: React.FC = () => {
     const id = setTimeout(() => { void load() }, 0)
     return () => clearTimeout(id)
   }, [load])
-  useEffect(() => {
-    const vh = window.innerHeight || 900
-    const reserved = 360
-    const rowH = 72
-    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
-    if (df !== pageSize) setPageSize(df)
-  }, [])
   useEffect(() => {
     const run = async () => {
       const orderId = tasks.find(t=>t.id===selectedTask)?.orderId

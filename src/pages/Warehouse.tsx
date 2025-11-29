@@ -6,7 +6,13 @@ import { Factory, Package, ArrowDownCircle, TrendingUp } from 'lucide-react'
 export const Warehouse: React.FC = () => {
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(() => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 900
+    const reserved = 360
+    const rowH = 220
+    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
+    return df
+  })
   const [total, setTotal] = useState(0)
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -34,10 +40,7 @@ export const Warehouse: React.FC = () => {
   }, [q, page, pageSize])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => {
-    const df = 5
-    if (df !== pageSize) setPageSize(df)
-  }, [])
+  
 
   const handleCreate = () => {
     setForm({

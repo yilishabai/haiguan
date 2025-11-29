@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { HudPanel, GlowButton } from '../components/ui/HudPanel'
-import { getCustomsHeadersPaged, countCustomsHeaders, getCustomsItems, upsertCustomsHeader, insertCustomsItem, computeTaxes, ensureCustomsTables, getHsChapters, getHsHeadings, getHsSubheadings, getPorts, getLinkableOrders, queryAll } from '../lib/sqlite'
+import { getCustomsHeadersPaged, countCustomsHeaders, getCustomsItems, upsertCustomsHeader, insertCustomsItem, computeTaxes, ensureCustomsTables, getHsChapters, getHsHeadings, getHsSubheadings, getPorts, getLinkableOrders, queryAll, enqueueJob, applyBusinessModel } from '../lib/sqlite'
 import * as XLSX from 'xlsx'
 
 export const Customs: React.FC = () => {
@@ -20,11 +20,18 @@ export const Customs: React.FC = () => {
   const [onlyMissingUnit, setOnlyMissingUnit] = useState(false)
   const [onlyAbnormalQty, setOnlyAbnormalQty] = useState(false)
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(() => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 900
+    const reserved = 360
+    const rowH = 54
+    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
+    return df
+  })
   const [total, setTotal] = useState(0)
   const [rows, setRows] = useState<any[]>([])
   const [selected, setSelected] = useState<any | null>(null)
   const [items, setItems] = useState<any[]>([])
+  const [heldTips, setHeldTips] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [showModal, setShowModal] = useState(false)
@@ -47,13 +54,6 @@ export const Customs: React.FC = () => {
   }, [q, status, port, mode, hsChapter, hsHead, hsSub, page, pageSize])
 
   useEffect(() => { const id = setTimeout(() => { void load() }, 0); return () => clearTimeout(id) }, [load])
-  useEffect(() => {
-    const vh = window.innerHeight || 900
-    const reserved = 360
-    const rowH = 54
-    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
-    if (df !== pageSize) setPageSize(df)
-  }, [])
   useEffect(() => {
     const id = setTimeout(async () => { setChapters(await getHsChapters()) }, 0)
     return () => clearTimeout(id)
@@ -82,6 +82,25 @@ export const Customs: React.FC = () => {
     const id = setTimeout(() => { void run() }, 0)
     return () => clearTimeout(id)
   }, [selected])
+
+  useEffect(() => {
+    const run = async () => {
+      if (!selected) { setHeldTips([]); return }
+      const tips: string[] = []
+      if (selected.status === 'held') {
+        const risk = await applyBusinessModel(selected.orderId)
+        for (const m of (risk.messages||[])) { tips.push(String(m)) }
+      }
+      const missOrigin = items.some(it => !it.originCountry)
+      if (missOrigin) tips.push('存在原产国缺失的商品项，需补充并核对')
+      const [o] = await queryAll(`SELECT enterprise FROM orders WHERE id=$id`, { $id: selected.orderId })
+      if (o && String(o.enterprise||'') !== String(selected.enterprise||'')) tips.push('申报单位与订单企业不一致，建议核对一致性')
+      if (tips.length === 0 && selected.status === 'held') tips.push('建议核查监管条件匹配情况（如3C、动植检、强制标准）')
+      setHeldTips(tips)
+    }
+    const id = setTimeout(() => { void run() }, 0)
+    return () => clearTimeout(id)
+  }, [selected, items])
 
   const totals = useMemo(()=>{
     let tariff = 0, vat = 0, excise = 0
@@ -204,7 +223,7 @@ export const Customs: React.FC = () => {
     const enterprise = o?.enterprise || '未命名企业'
     const currency = o?.currency || 'CNY'
     const amountTotal = Number(o?.amount || 0)
-    await upsertCustomsHeader({
+    const header = {
       id: headerId,
       declarationNo: declNo,
       enterprise,
@@ -213,7 +232,7 @@ export const Customs: React.FC = () => {
       currency,
       totalValue: amountTotal,
       declareDate: new Date().toISOString().slice(0,10)
-    })
+    }
     const cfg = (cat:string)=>{
       if (cat==='beauty') return { hs:'3304.9900', unit:'kg', names:['面膜','乳霜','口红'] }
       if (cat==='electronics') return { hs:'8517.1200', unit:'pcs', names:['手机','路由器','适配器'] }
@@ -226,6 +245,7 @@ export const Customs: React.FC = () => {
     const fx = (cur:string) => cur==='USD'?7.12:cur==='EUR'?7.80:cur==='GBP'?8.90:cur==='JPY'?0.05:1
     const n = 3
     let remaining = amountTotal || 0
+    const items: any[] = []
     for (let i=0;i<n;i++) {
       const share = i===n-1 ? remaining : Math.round(((amountTotal||0) * (0.2 + Math.random()*0.3)) * 100)/100
       remaining = Math.max(0, remaining - share)
@@ -234,10 +254,11 @@ export const Customs: React.FC = () => {
       const qtyRaw = unitPrice>0 ? share / unitPrice : 1
       const qty = Math.max(1, Math.round(qtyRaw * 100) / 100)
       const tax = computeTaxes(hs, share * fx(currency))
-      await insertCustomsItem({ id: `${headerId}_${i+1}`, headerId, lineNo: i+1, hsCode: hs, name, spec: 'Standard', unit, qty, unitPrice, amount: share, originCountry: 'CN', taxRate: (Math.round((tax.tariffRate+tax.vatRate+tax.exciseRate)*1000)/1000), tariff: tax.tariff, excise: tax.excise, vat: tax.vat })
+      items.push({ id: `${headerId}_${i+1}`, headerId, lineNo: i+1, hsCode: hs, name, spec: 'Standard', unit, qty, unitPrice, amount: share, originCountry: 'CN', taxRate: (Math.round((tax.tariffRate+tax.vatRate+tax.exciseRate)*1000)/1000), tariff: tax.tariff, excise: tax.excise, vat: tax.vat })
     }
+    await enqueueJob('customs_declare', { header, items })
     setShowModal(false)
-    load()
+    setTimeout(() => { load() }, 800)
   }
 
   return (
@@ -349,6 +370,11 @@ export const Customs: React.FC = () => {
                       {warnings.slice(0,4).map((w,i)=>(<div key={i}>⚠️ {w}</div>))}
                     </div>
                   )}
+                  {selected.status==='held' && (
+                    <div className="mt-2 text-xs text-red-400">
+                      {heldTips.slice(0,4).map((w,i)=>(<div key={i}>⛔ {w}</div>))}
+                    </div>
+                  )}
                   <div className="mt-3 flex items-center justify-end">
                     <GlowButton size="sm" onClick={async ()=>{
                       if (!selected) return
@@ -358,6 +384,20 @@ export const Customs: React.FC = () => {
                       XLSX.utils.book_append_sheet(wb, ws, 'CustomsItems')
                       XLSX.writeFile(wb, `${selected.declarationNo || 'customs'}.xlsx`)
                     }}>导出Excel</GlowButton>
+                    <GlowButton size="sm" className="ml-2" onClick={async ()=>{
+                      if (!selected) return
+                      const cur = selected.status || 'declared'
+                      const next = cur==='declared' ? 'inspecting' : (cur==='inspecting' ? 'cleared' : 'cleared')
+                      await enqueueJob('customs_progress', { header_id: selected.id, next_status: next })
+                      setTimeout(() => { load() }, 800)
+                    }}>推进通关状态</GlowButton>
+                    {selected.status==='held' && (
+                      <GlowButton size="sm" className="ml-2" onClick={async ()=>{
+                        if (!selected) return
+                        await enqueueJob('customs_progress', { header_id: selected.id, next_status: 'declared' })
+                        setTimeout(() => { load() }, 800)
+                      }}>重新申报</GlowButton>
+                    )}
                   </div>
                 </div>
               </div>

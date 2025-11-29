@@ -91,8 +91,8 @@ export const DataCard: React.FC<DataCardProps> = ({
 };
 
 interface StatusBadgeProps {
-  status: 'active' | 'warning' | 'error' | 'processing';
-  children: React.ReactNode;
+  status: string;
+  children?: React.ReactNode;
   pulse?: boolean;
 }
 
@@ -101,17 +101,35 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   children, 
   pulse = false 
 }) => {
-  const statusStyles = {
-    active: 'bg-emerald-green/20 text-emerald-green border-emerald-green/30',
-    warning: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-    error: 'bg-alert-red/20 text-alert-red border-alert-red/30',
-    processing: 'bg-cyber-cyan/20 text-cyber-cyan border-cyber-cyan/30'
-  };
+  const mapToStyle = (s: string) => {
+    const ok = ['active','completed','cleared','released','signed','success']
+    const warn = ['pending','held','warning']
+    const err = ['failed','error','blocked']
+    const run = ['processing','transit','customs','delivery','in_progress']
+    if (ok.includes(s)) return 'bg-emerald-green/20 text-emerald-green border-emerald-green/30'
+    if (err.includes(s)) return 'bg-alert-red/20 text-alert-red border-alert-red/30'
+    if (run.includes(s)) return 'bg-cyber-cyan/20 text-cyber-cyan border-cyber-cyan/30'
+    if (warn.includes(s)) return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+    return 'bg-gray-700/30 text-gray-300 border-gray-600/30'
+  }
+
+  const mapToLabel = (s: string) => {
+    const labels: Record<string,string> = {
+      created:'已创建', pending:'待处理', processing:'处理中', completed:'已完成', failed:'失败', cancelled:'已取消',
+      declared:'已申报', inspecting:'查验中', cleared:'已放行', held:'异常拦截', blocked:'拦截', released:'已放行',
+      pickup:'已揽收', transit:'运输中', customs:'清关中', delivery:'派送中', signed:'已签收', success:'成功',
+      active:'正常', warning:'警告', error:'错误'
+    }
+    return labels[s] || s
+  }
+
+  const style = mapToStyle(String(status || '').toLowerCase())
+  const label = children ?? mapToLabel(String(status || ''))
 
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusStyles[status]} ${pulse ? 'animate-pulse' : ''}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${style} ${pulse ? 'animate-pulse' : ''}`}>
       <span className={`status-indicator ${status} ${pulse ? 'animate-ping' : ''}`}></span>
-      {children}
+      {label}
     </span>
   );
 };
