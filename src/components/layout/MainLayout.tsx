@@ -10,7 +10,12 @@ import {
   X,
   Settings,
   Bell,
-  Users
+  Users,
+  Truck,
+  CreditCard,
+  Factory,
+  ShieldCheck,
+  ShoppingCart
 } from 'lucide-react';
 import { StatusBadge } from '../ui/HudPanel';
 import { getSettings } from '../../lib/sqlite';
@@ -36,8 +41,38 @@ const menuItems = [
     icon: Network, 
     label: '供应链协同', 
     path: '/collaboration',
-    description: '智能订单管理工作台',
+    description: '协同状态全链路监控',
     badge: '核心'
+  },
+  { 
+    icon: ShoppingCart, 
+    label: '订单管理', 
+    path: '/orders',
+    description: '订单接入与统一分发'
+  },
+  { 
+    icon: ShieldCheck, 
+    label: '报关管理', 
+    path: '/customs',
+    description: '申报单导入与合规核算'
+  },
+  { 
+    icon: Truck, 
+    label: '智能物流', 
+    path: '/logistics',
+    description: '物流追踪与运单管理'
+  },
+  { 
+    icon: CreditCard, 
+    label: '跨境支付', 
+    path: '/payment',
+    description: '结算管理与风控'
+  },
+  { 
+    icon: Factory, 
+    label: '智能仓储', 
+    path: '/warehouse',
+    description: '库存管理与生产调度'
   },
   { 
     icon: CheckCircle, 
@@ -50,12 +85,6 @@ const menuItems = [
     label: '参与企业', 
     path: '/enterprises',
     description: '备案企业查询与接入'
-  },
-  { 
-    icon: CheckCircle, 
-    label: '报关管理', 
-    path: '/customs',
-    description: '申报单导入与合规核算'
   },
   { 
     icon: Settings, 

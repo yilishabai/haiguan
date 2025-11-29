@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Package, Truck, CreditCard, Shield, Factory, TrendingUp, AlertTriangle, CheckCircle, Clock, DollarSign, Globe, BarChart3, X, FileText, Activity, Eye } from 'lucide-react';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
 import { BeautyDemo } from '../components/BeautyDemo';
-import { getSettlements, getCustomsClearances, getLogisticsData, getPaymentMethods, getInventoryData, queryAll, updateSettlementStatus, updateCustomsStatus } from '../lib/sqlite';
+import { getSettlements, getCustomsClearances, getLogisticsData, getPaymentMethods, getInventoryData, queryAll, updateSettlementStatus, updateCustomsStatus, getCollaborationFlows, createOrderFlow, advanceOrderFlow } from '../lib/sqlite';
 
 const DetailModal = ({ isOpen, onClose, title, data, type, onAction }: { 
   isOpen: boolean; 
@@ -142,6 +142,7 @@ export const Collaboration: React.FC = () => {
   const [paymentMethods, setPaymentMethods] = useState<PaymentData[]>([]);
   const [inventoryData, setInventoryData] = useState<any[]>([]);
   const [overviewSeries, setOverviewSeries] = useState<any[]>([]);
+  const [collaborationFlows, setCollaborationFlows] = useState<any[]>([]);
   
   // Modal State
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -180,6 +181,18 @@ export const Collaboration: React.FC = () => {
     setIsModalOpen(false);
   };
 
+  const handleSimulateOrder = async () => {
+    await createOrderFlow();
+    const flows = await getCollaborationFlows();
+    setCollaborationFlows(flows);
+  };
+
+  const handleAdvanceFlow = async (id: string) => {
+    await advanceOrderFlow(id);
+    const flows = await getCollaborationFlows();
+    setCollaborationFlows(flows);
+  };
+
   useEffect(() => {
     const load = async () => {
       const settlements = await getSettlements();
@@ -187,11 +200,13 @@ export const Collaboration: React.FC = () => {
       const logistics = await getLogisticsData();
       const payments = await getPaymentMethods();
       const inventory = await getInventoryData();
+      const flows = await getCollaborationFlows();
       setOrderSettlements(settlements as any);
       setCustomsClearances(customs as any);
       setLogisticsData(logistics as any);
       setPaymentMethods(payments as any);
       setInventoryData(inventory as any);
+      setCollaborationFlows(flows);
 
       const enterprises = await queryAll(`SELECT COUNT(DISTINCT enterprise) as c FROM orders`);
       const settleCompleted = (await queryAll(`SELECT COUNT(*) as c FROM settlements WHERE status='completed'`))[0]?.c || 0;
@@ -320,6 +335,7 @@ export const Collaboration: React.FC = () => {
         <nav className="flex space-x-8">
           {[
             { id: 'overview', label: '协同总览', icon: BarChart3 },
+            { id: 'engine', label: '协同引擎', icon: Activity },
             { id: 'beauty-demo', label: '美妆演示', icon: Package },
             { id: 'settlement', label: '订单结算', icon: DollarSign },
             { id: 'customs', label: '报关通关', icon: Shield },
@@ -393,6 +409,75 @@ export const Collaboration: React.FC = () => {
               </div>
             </HudPanel>
           </div>
+        )}
+
+        {activeTab === 'engine' && (
+          <HudPanel className="p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-semibold text-white">协同响应引擎状态机</h3>
+              <GlowButton onClick={handleSimulateOrder}>
+                <Package size={16} className="mr-2" />
+                模拟新订单
+              </GlowButton>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-700">
+                    <th className="text-left py-3 px-4 text-gray-300">订单号</th>
+                    <th className="text-left py-3 px-4 text-gray-300">创建时间</th>
+                    <th className="text-left py-3 px-4 text-gray-300">企业</th>
+                    <th className="text-left py-3 px-4 text-gray-300">金额</th>
+                    <th className="text-center py-3 px-4 text-gray-300">协同状态 (Order → Customs → Logistics → Payment → Warehouse)</th>
+                    <th className="text-right py-3 px-4 text-gray-300">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {collaborationFlows.map((flow) => (
+                    <tr key={flow.id} className="border-b border-gray-800 hover:bg-gray-800">
+                      <td className="py-3 px-4 text-cyber-cyan">{flow.order_number}</td>
+                      <td className="py-3 px-4 text-gray-400">{flow.created_at?.slice(11,19)}</td>
+                      <td className="py-3 px-4 text-white">{flow.enterprise}</td>
+                      <td className="py-3 px-4 text-white">{flow.amount?.toLocaleString()}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center justify-center space-x-4">
+                          {['订单', '通关', '物流', '支付', '入库'].map((label, idx) => {
+                            const step = idx + 1;
+                            return (
+                              <div key={step} className="flex flex-col items-center">
+                                <div className={`w-3 h-3 rounded-full mb-1 ${
+                                  flow.currentStep > step ? 'bg-emerald-green' :
+                                  flow.currentStep === step ? 'bg-cyber-cyan animate-pulse' :
+                                  'bg-gray-700'
+                                }`} />
+                                <span className="text-[10px] text-gray-500">{label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        {flow.currentStep < 5 && (
+                          <button 
+                            onClick={() => handleAdvanceFlow(flow.id)}
+                            className="text-xs bg-cyber-cyan/20 text-cyber-cyan hover:bg-cyber-cyan/30 px-2 py-1 rounded transition-colors"
+                          >
+                            推进流程
+                          </button>
+                        )}
+                        {flow.currentStep === 5 && (
+                          <span className="text-xs text-emerald-green flex items-center justify-end gap-1">
+                            <CheckCircle size={12} />
+                            已完成
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </HudPanel>
         )}
 
         {activeTab === 'settlement' && (

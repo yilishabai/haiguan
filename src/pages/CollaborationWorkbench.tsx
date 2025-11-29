@@ -87,6 +87,13 @@ export const CollaborationWorkbench: React.FC = () => {
     return () => clearTimeout(id)
   }, [load])
   useEffect(() => {
+    const vh = window.innerHeight || 900
+    const reserved = 360
+    const rowH = 72
+    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
+    if (df !== pageSize) setPageSize(df)
+  }, [])
+  useEffect(() => {
     const run = async () => {
       const orderId = tasks.find(t=>t.id===selectedTask)?.orderId
       if (!orderId) { setReco(null); return }
@@ -151,13 +158,7 @@ export const CollaborationWorkbench: React.FC = () => {
           <label className="inline-flex items-center gap-2 text-sm text-gray-300">
             <input type="checkbox" checked={onlyAbnormal} onChange={(e)=>{ setPage(1); setOnlyAbnormal(e.target.checked) }} /> 仅显示异常
           </label>
-          <div className="flex items-center justify-end gap-2">
-            <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-2 text-white w-24">
-              <option value={10}>10/页</option>
-              <option value={20}>20/页</option>
-              <option value={50}>50/页</option>
-            </select>
-          </div>
+          <div></div>
         </div>
       </div>
 
@@ -292,7 +293,17 @@ export const CollaborationWorkbench: React.FC = () => {
       </div>
 
       <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-400">共 {total} 条</div>
+        <div className="flex items-center gap-2 text-sm text-gray-400">
+          <span>共 {total} 条</span>
+          <span>|</span>
+          <span>每页</span>
+          <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white">
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+          </select>
+        </div>
         <div className="flex items-center gap-2">
           <button onClick={()=>setPage(p=>Math.max(1,p-1))} className="px-3 py-1 rounded border border-slate-700 bg-slate-800/60 text-white disabled:opacity-50" disabled={page<=1}>上一页</button>
           <div className="px-3 py-1 rounded border border-slate-700 bg-slate-800/60 text-white">第 {page} 页</div>

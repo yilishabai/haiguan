@@ -358,6 +358,69 @@ function seed(db: Database) {
     })
   })
 
+  const buildAlgCode = (fn: string) => {
+    const lines: string[] = []
+    lines.push(`def ${fn}(data):`)
+    lines.push(`    state = {}`)
+    for (let i = 0; i < 120; i++) {
+      lines.push(`    v${i} = len(str(data)) + ${i}`)
+    }
+    lines.push(`    s = 0`)
+    for (let i = 0; i < 60; i++) {
+      lines.push(`    s = s + ${i}`)
+    }
+    lines.push(`    state['score'] = s`)
+    lines.push(`    return s`)
+    lines.push(``)
+    lines.push(`def build_graph(edges):`)
+    lines.push(`    g = {}`)
+    for (let i = 0; i < 30; i++) { lines.push(`    g[${i}] = []`) }
+    for (let i = 0; i < 30; i++) { lines.push(`    g[${i}].append(${i})`) }
+    lines.push(`    return g`)
+    lines.push(``)
+    lines.push(`def optimize_path(g):`)
+    lines.push(`    best = 0`)
+    for (let i = 0; i < 30; i++) { lines.push(`    best = best + ${i}`) }
+    lines.push(`    return best`)
+    lines.push(``)
+    lines.push(`class Engine:`)
+    lines.push(`    def __init__(self):`)
+    lines.push(`        self.w = 0`)
+    lines.push(`    def fit(self, x):`)
+    for (let i = 0; i < 40; i++) { lines.push(`        self.w = self.w + ${i}`) }
+    lines.push(`    def predict(self, x):`)
+    lines.push(`        s = 0`)
+    for (let i = 0; i < 40; i++) { lines.push(`        s = s + ${i}`) }
+    lines.push(`        return s`)
+    return lines.join('\n')
+  }
+
+  ;[
+    { id:'xchain-evidence-aggregation', name:'跨链证据聚合算法', cat:'control', ver:'v1.0.0', st:'active', acc:92.1, perf:88.4, use:520, desc:'多链来源证据归并与时序校验', feats:'["跨链聚合","时序校验","可信存证"]', upd:'2025-11-29', auth:'链治理组', code: buildAlgCode('xchain_evidence_aggregation') },
+    { id:'govdata-trust-sync', name:'政务数据可信同步算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:91.3, perf:87.9, use:498, desc:'多部门政务数据跨域一致性同步', feats:'["跨域同步","一致性","审计"]', upd:'2025-11-29', auth:'数据融合组', code: buildAlgCode('govdata_trust_sync') },
+    { id:'enterprise-compliance-profiling', name:'企业合规画像生成算法', cat:'decision', ver:'v1.0.0', st:'active', acc:90.6, perf:88.1, use:612, desc:'企业多源数据合规风险画像', feats:'["信用评分","风险画像","穿透"]', upd:'2025-11-29', auth:'风控画像组', code: buildAlgCode('enterprise_compliance_profiling') },
+    { id:'trade-risk-trace', name:'跨境贸易风险溯源算法', cat:'control', ver:'v1.0.0', st:'active', acc:92.8, perf:86.7, use:554, desc:'交易链路风险事件溯源与定位', feats:'["链路溯源","时序因果","多源联查"]', upd:'2025-11-29', auth:'链路分析组', code: buildAlgCode('trade_risk_trace') },
+    { id:'regulation-adaptation', name:'监管规则适配变更算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:88.9, perf:89.3, use:430, desc:'规则库动态更新与业务适配', feats:'["规则匹配","变更传播","影响评估"]', upd:'2025-11-29', auth:'规则引擎组', code: buildAlgCode('regulation_adaptation') },
+    { id:'onchain-consistency-verifier', name:'链上数据一致性校验算法', cat:'control', ver:'v1.0.0', st:'active', acc:93.5, perf:90.2, use:520, desc:'链上链下数据一致性校验', feats:'["哈希校验","区块索引","节点比对"]', upd:'2025-11-29', auth:'区块数据组', code: buildAlgCode('onchain_consistency_verifier') },
+    { id:'fund-flow-penetration', name:'资金流合规穿透分析算法', cat:'decision', ver:'v1.0.0', st:'active', acc:91.4, perf:88.6, use:488, desc:'多账户资金流向穿透分析', feats:'["账户关联","链路穿透","风险评分"]', upd:'2025-11-29', auth:'金融风控组', code: buildAlgCode('fund_flow_penetration') },
+    { id:'customs-merge', name:'海关申报智能归并算法', cat:'control', ver:'v1.0.0', st:'active', acc:89.7, perf:90.1, use:476, desc:'申报分单归并与重复项消解', feats:'["分单归并","重复消解","一致性"]', upd:'2025-11-29', auth:'申报智能组', code: buildAlgCode('customs_merge') },
+    { id:'multi-agent-collab-game', name:'多主体协同博弈优化算法', cat:'optimization', ver:'v1.0.0', st:'active', acc:90.8, perf:89.2, use:402, desc:'政企多主体协同的博弈求解', feats:'["纳什均衡","约束协同","收益优化"]', upd:'2025-11-29', auth:'协同优化组', code: buildAlgCode('multi_agent_collab_game') },
+    { id:'port-congestion-st', name:'港口拥堵时空预测算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:92.2, perf:87.5, use:590, desc:'港口拥堵指数时空预测', feats:'["时序","空间插值","指数预测"]', upd:'2025-11-29', auth:'港口时空组', code: buildAlgCode('port_congestion_st') },
+    { id:'manifest-diff-locator', name:'舱单对账差异定位算法', cat:'control', ver:'v1.0.0', st:'active', acc:93.1, perf:88.3, use:471, desc:'舱单与订单、申报单对账差异定位', feats:'["字段比对","差异定位","闭环修复"]', upd:'2025-11-29', auth:'对账引擎组', code: buildAlgCode('manifest_diff_locator') },
+    { id:'gateway-admittance-score', name:'关口准入评分算法', cat:'decision', ver:'v1.0.0', st:'active', acc:88.4, perf:92.4, use:399, desc:'多维指标的关口准入评分', feats:'["风险加权","合规指标","准入阈值"]', upd:'2025-11-29', auth:'准入评估组', code: buildAlgCode('gateway_admittance_score') },
+    { id:'risk-cascade-response', name:'风险事件联动响应算法', cat:'control', ver:'v1.0.0', st:'active', acc:90.1, perf:89.9, use:438, desc:'多系统风险事件联动响应', feats:'["事件流","阈值触发","联动编排"]', upd:'2025-11-29', auth:'运营编排组', code: buildAlgCode('risk_cascade_response') },
+    { id:'logistics-anomaly-localize', name:'物流环节异常定位算法', cat:'control', ver:'v1.0.0', st:'active', acc:92.0, perf:88.7, use:520, desc:'物流链路节点异常定位', feats:'["节点评分","路径分析","异常定位"]', upd:'2025-11-29', auth:'物流智能组', code: buildAlgCode('logistics_anomaly_localize') },
+    { id:'doc-fingerprint-match', name:'文档指纹匹配算法', cat:'control', ver:'v1.0.0', st:'active', acc:93.6, perf:90.5, use:512, desc:'多单证指纹匹配与一致性校验', feats:'["指纹提取","匹配","一致性"]', upd:'2025-11-29', auth:'文档智能组', code: buildAlgCode('doc_fingerprint_match') },
+    { id:'license-auth-recognition', name:'证照真伪识别算法', cat:'control', ver:'v1.0.0', st:'active', acc:94.0, perf:89.8, use:480, desc:'证照真伪识别与可信核验', feats:'["版式识别","要素比对","可信核验"]', upd:'2025-11-29', auth:'证照识别组', code: buildAlgCode('license_auth_recognition') },
+    { id:'tax-invoice-linked-check', name:'税务票据联查算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:89.9, perf:90.2, use:466, desc:'税票与订单、结算联查', feats:'["票据联查","金额一致","异常拦截"]', upd:'2025-11-29', auth:'税务协同组', code: buildAlgCode('tax_invoice_linked_check') },
+    { id:'enterprise-credit-chain', name:'企业信用链评估算法', cat:'decision', ver:'v1.0.0', st:'active', acc:90.7, perf:88.9, use:512, desc:'企业信用链路综合评估', feats:'["信用链","多源评分","阈值判定"]', upd:'2025-11-29', auth:'信用评估组', code: buildAlgCode('enterprise_credit_chain') },
+    { id:'crossdomain-data-masking', name:'数据跨域脱敏算法', cat:'control', ver:'v1.0.0', st:'active', acc:88.8, perf:92.1, use:405, desc:'跨域数据交换的脱敏处理', feats:'["字段脱敏","规则模板","风险控制"]', upd:'2025-11-29', auth:'数据治理组', code: buildAlgCode('crossdomain_data_masking') },
+    { id:'channel-selection-moo', name:'跨境通道选择多目标优化算法', cat:'optimization', ver:'v1.0.0', st:'active', acc:92.5, perf:90.0, use:590, desc:'成本时效风险多目标通道选择', feats:'["多目标优化","约束求解","策略推荐"]', upd:'2025-11-29', auth:'通道优化组', code: buildAlgCode('channel_selection_moo') }
+  ].forEach(x=>{
+    db.run(`INSERT INTO algorithms(id,name,category,version,status,accuracy,performance,usage,description,features,lastUpdated,author,code) VALUES($id,$n,$c,$v,$s,$a,$p,$u,$d,$f,$lu,$au,$co)`,{
+      $id:x.id,$n:x.name,$c:x.cat,$v:x.ver,$s:x.st,$a:x.acc,$p:x.perf,$u:x.use,$d:x.desc,$f:x.feats,$lu:x.upd,$au:x.auth,$co:x.code
+    })
+  })
   ;[
     { id:'beauty-model', name:'美妆品类业务模型', cat:'beauty', ver:'v1.2.0', st:'active', ent:156, ord:2341, desc:'专门针对美妆品类的跨境供应链业务逻辑模型', sc:'["NMPA备案","保质期管理","成分合规"]', cp:'["NMPA","CFDA","海关编码"]', sr:92.5, lu:'2025-11-20', mt:'美妆业务部' },
     { id:'wine-model', name:'酒水品类业务模型', cat:'wine', ver:'v1.1.8', st:'active', ent:89, ord:1456, desc:'针对酒水品类的特殊监管要求和业务流程模型', sc:'["酒类许可","年龄验证","税收计算"]', cp:'["酒类专卖","海关","税务"]', sr:89.2, lu:'2025-11-18', mt:'酒水业务部' },
@@ -1101,7 +1164,7 @@ export async function getCustomsHeadersPaged(q: string, status: string, portCode
     where.push(`EXISTS(SELECT 1 FROM customs_items ci WHERE ci.header_id=customs_headers.id AND (ci.qty IS NULL OR ci.qty<=0))`)
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return queryAll(`SELECT id, declaration_no as declarationNo, enterprise, consignor, consignee, port_code as portCode, trade_mode as tradeMode, currency, total_value as totalValue, gross_weight as grossWeight, net_weight as netWeight, packages, country_origin as countryOrigin, country_dest as countryDest, status, declare_date as declareDate, updated_at as updatedAt FROM customs_headers ${whereSql} ORDER BY declare_date DESC LIMIT $limit OFFSET $offset`, params)
+  return queryAll(`SELECT id, declaration_no as declarationNo, enterprise, consignor, consignee, port_code as portCode, trade_mode as tradeMode, currency, total_value as totalValue, gross_weight as grossWeight, net_weight as netWeight, packages, country_origin as countryOrigin, country_dest as countryDest, status, declare_date as declareDate, order_id as orderId, updated_at as updatedAt FROM customs_headers ${whereSql} ORDER BY declare_date DESC LIMIT $limit OFFSET $offset`, params)
 }
 
 export async function countCustomsHeaders(q: string, status: string, portCode: string, tradeMode: string, hsChap?: string, hsHead?: string, hsSub?: string, onlyBadHs?: boolean, onlyMissingUnit?: boolean, onlyAbnormalQty?: boolean) {
@@ -1612,4 +1675,299 @@ export async function runDataQualityScan() {
     await exec(`INSERT INTO audit_logs(message,created_at) VALUES($m,$t)`, { $m: `[Risk] ${m}`, $t: new Date().toISOString() })
   }
   return issues
+}
+
+export async function getCollaborationFlows() {
+  const rows = await queryAll(`
+    SELECT 
+      o.id, o.order_number, o.enterprise, o.category, o.amount, o.created_at,
+      cc.status as customs_status, cc.id as customs_id,
+      l.status as logistics_status, l.id as logistics_id,
+      s.status as settlement_status, s.id as settlement_id,
+      CASE 
+        WHEN l.status = 'completed' THEN 'completed'
+        ELSE 'pending'
+      END as warehouse_status
+    FROM orders o
+    LEFT JOIN customs_clearances cc ON o.id = cc.order_id
+    LEFT JOIN logistics l ON o.id = l.order_id
+    LEFT JOIN settlements s ON o.id = s.order_id
+    ORDER BY o.created_at DESC
+    LIMIT 50
+  `)
+  
+  return rows.map(r => {
+    // Determine overall state based on the user's flow: Order -> Customs -> Logistics -> Payment -> Warehouse
+    let currentStep = 1
+    if (r.customs_status) currentStep = 2
+    if (r.logistics_status) currentStep = 3
+    if (r.settlement_status) currentStep = 4
+    if (r.warehouse_status === 'completed') currentStep = 5
+    
+    return {
+      ...r,
+      currentStep
+    }
+  })
+}
+
+export async function createOrderFlow() {
+  const id = 'O' + Date.now()
+  const enterprises = ['上海美妆集团','深圳电子科技','广州食品进出口','宁波服装贸易','青岛机械制造']
+  const categories = ['beauty','electronics','wine','textile','appliance']
+  const n = Math.floor(Math.random()*enterprises.length)
+  
+  await exec(`INSERT INTO orders(id,order_number,enterprise,category,status,amount,currency,created_at,updated_at)
+    VALUES($id,$num,$ent,$cat,'created',$amt,'CNY',$cr,$up)`, {
+      $id: id,
+      $num: 'ORD-' + id,
+      $ent: enterprises[n],
+      $cat: categories[n],
+      $amt: Math.floor(Math.random()*100000)+1000,
+      $cr: new Date().toISOString(),
+      $up: new Date().toISOString()
+  })
+  return id
+}
+
+export async function advanceOrderFlow(orderId: string) {
+  // Check current state
+  const flow = (await queryAll(`
+    SELECT 
+      o.id, 
+      cc.status as customs_status, 
+      l.status as logistics_status, 
+      s.status as settlement_status
+    FROM orders o
+    LEFT JOIN customs_clearances cc ON o.id = cc.order_id
+    LEFT JOIN logistics l ON o.id = l.order_id
+    LEFT JOIN settlements s ON o.id = s.order_id
+    WHERE o.id = $id
+  `, { $id: orderId }))[0]
+
+  if (!flow) return
+
+  // State Machine: Order -> Customs -> Logistics -> Payment -> Warehouse
+  
+  // 1. Create Customs
+  if (!flow.customs_status) {
+    const cid = 'C' + Date.now()
+    await exec(`INSERT INTO customs_clearances(id,declaration_no,product,enterprise,status,clearance_time,compliance,risk_score,order_id) 
+      VALUES($id,$dec,'商品',$ent,'declared',0,95,10,$oid)`, {
+      $id: cid,
+      $dec: 'DEC-' + cid,
+      $ent: 'System',
+      $oid: orderId
+    })
+    return 'customs_started'
+  }
+  
+  // 2. Clear Customs -> Start Logistics
+  if (flow.customs_status === 'declared') {
+     await exec(`UPDATE customs_clearances SET status='cleared', clearance_time=2.5 WHERE order_id=$oid`, { $oid: orderId })
+     return 'customs_cleared'
+  }
+
+  if (flow.customs_status === 'cleared' && !flow.logistics_status) {
+    const lid = 'L' + Date.now()
+    await exec(`INSERT INTO logistics(id,tracking_no,origin,destination,status,estimated_time,actual_time,efficiency,order_id)
+      VALUES($id,$tr,'CN','US','pickup',100,0,90,$oid)`, {
+      $id: lid,
+      $tr: 'TRK-' + lid,
+      $oid: orderId
+    })
+    return 'logistics_started'
+  }
+  
+  // 3. Logistics Transit -> Payment
+  if (flow.logistics_status === 'pickup') {
+    await exec(`UPDATE logistics SET status='transit' WHERE order_id=$oid`, { $oid: orderId })
+    return 'logistics_transit'
+  }
+
+  if (flow.logistics_status === 'transit' && !flow.settlement_status) {
+    const sid = 'S' + Date.now()
+    await exec(`INSERT INTO settlements(id,order_id,status,settlement_time,risk_level)
+      VALUES($id,$oid,'processing',0,'low')`, {
+      $id: sid,
+      $oid: orderId
+    })
+    return 'payment_started'
+  }
+  
+  // 4. Payment Complete -> Logistics Complete (Warehouse)
+  if (flow.settlement_status === 'processing') {
+    await exec(`UPDATE settlements SET status='completed', settlement_time=1.5 WHERE order_id=$oid`, { $oid: orderId })
+    return 'payment_completed'
+  }
+
+  if (flow.settlement_status === 'completed' && flow.logistics_status === 'transit') {
+    await exec(`UPDATE logistics SET status='completed', actual_time=98 WHERE order_id=$oid`, { $oid: orderId })
+    return 'warehouse_inbound'
+  }
+  
+  return 'no_change'
+}
+
+// --- Orders CRUD ---
+
+export async function getOrdersPaged(q: string, status: string, offset: number, limit: number) {
+  const where: string[] = []
+  const params: any = { $offset: offset, $limit: limit }
+  if (q) { where.push(`(order_number LIKE $q OR enterprise LIKE $q)`); params.$q = `%${q}%` }
+  if (status && status !== 'all') { where.push(`status = $status`); params.$status = status }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  return queryAll(`SELECT id, order_number as orderNumber, enterprise, category, status, amount, currency, created_at as createdAt FROM orders ${whereSql} ORDER BY created_at DESC LIMIT $limit OFFSET $offset`, params)
+}
+
+export async function countOrders(q: string, status: string) {
+  const where: string[] = []
+  const params: any = {}
+  if (q) { where.push(`(order_number LIKE $q OR enterprise LIKE $q)`); params.$q = `%${q}%` }
+  if (status && status !== 'all') { where.push(`status = $status`); params.$status = status }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const rows = await queryAll(`SELECT COUNT(*) as c FROM orders ${whereSql}`, params)
+  return rows[0]?.c || 0
+}
+
+export async function upsertOrder(o: any) {
+  await exec(`INSERT INTO orders(id,order_number,enterprise,category,status,amount,currency,created_at,updated_at)
+              VALUES($id,$num,$ent,$cat,$st,$amt,$cur,$cr,$up)
+              ON CONFLICT(id) DO UPDATE SET
+                order_number=$num, enterprise=$ent, category=$cat, status=$st, amount=$amt, currency=$cur, updated_at=$up`,{
+    $id:o.id,$num:o.orderNumber,$ent:o.enterprise,$cat:o.category||'general',$st:o.status||'created',$amt:o.amount||0,$cur:o.currency||'CNY',$cr:o.createdAt||new Date().toISOString(),$up:new Date().toISOString()
+  })
+}
+
+export async function deleteOrder(id: string) {
+  await exec(`DELETE FROM orders WHERE id=$id`, { $id: id })
+}
+
+// --- Logistics CRUD ---
+
+export async function getLogisticsPaged(q: string, status: string, offset: number, limit: number) {
+  const where: string[] = []
+  const params: any = { $offset: offset, $limit: limit }
+  if (q) { where.push(`(l.tracking_no LIKE $q OR l.origin LIKE $q OR l.destination LIKE $q OR l.order_id LIKE $q OR o.order_number LIKE $q)`); params.$q = `%${q}%` }
+  if (status && status !== 'all') { where.push(`l.status = $status`); params.$status = status }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  return queryAll(`SELECT l.id, l.tracking_no as trackingNo, l.origin, l.destination, l.status, l.estimated_time as estimatedTime, l.actual_time as actualTime, l.efficiency, l.order_id as orderId, o.order_number as orderNumber, o.enterprise as enterprise FROM logistics l LEFT JOIN orders o ON o.id = l.order_id ${whereSql} ORDER BY l.id DESC LIMIT $limit OFFSET $offset`, params)
+}
+
+export async function countLogistics(q: string, status: string) {
+  const where: string[] = []
+  const params: any = {}
+  if (q) { where.push(`(l.tracking_no LIKE $q OR l.origin LIKE $q OR l.destination LIKE $q OR l.order_id LIKE $q OR o.order_number LIKE $q)`); params.$q = `%${q}%` }
+  if (status && status !== 'all') { where.push(`l.status = $status`); params.$status = status }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const rows = await queryAll(`SELECT COUNT(*) as c FROM logistics l LEFT JOIN orders o ON o.id=l.order_id ${whereSql}`, params)
+  return rows[0]?.c || 0
+}
+
+export async function upsertLogistics(l: any) {
+  await exec(`INSERT INTO logistics(id,tracking_no,origin,destination,status,estimated_time,actual_time,efficiency,order_id)
+              VALUES($id,$tr,$o,$d,$s,$et,$at,$ef,$oid)
+              ON CONFLICT(id) DO UPDATE SET
+                tracking_no=$tr, origin=$o, destination=$d, status=$s, estimated_time=$et, actual_time=$at, efficiency=$ef, order_id=$oid`,{
+    $id:l.id,$tr:l.trackingNo,$o:l.origin,$d:l.destination,$s:l.status,$et:l.estimatedTime||0,$at:l.actualTime||0,$ef:l.efficiency||0,$oid:l.orderId||''
+  })
+}
+
+export async function deleteLogistics(id: string) {
+  await exec(`DELETE FROM logistics WHERE id=$id`, { $id: id })
+}
+
+// --- Settlements CRUD ---
+
+export async function getSettlementsPaged(q: string, status: string, offset: number, limit: number) {
+  const where: string[] = []
+  const params: any = { $offset: offset, $limit: limit }
+  if (q) { where.push(`(s.order_id LIKE $q OR s.id LIKE $q OR o.order_number LIKE $q)`); params.$q = `%${q}%` }
+  if (status && status !== 'all') { where.push(`s.status = $status`); params.$status = status }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  return queryAll(`
+    SELECT s.id, s.order_id as orderId, o.order_number as orderNumber, o.enterprise as enterprise, s.status, s.settlement_time as settlementTime, s.risk_level as riskLevel
+    FROM settlements s LEFT JOIN orders o ON o.id = s.order_id
+    ${whereSql}
+    ORDER BY s.id DESC LIMIT $limit OFFSET $offset
+  `, params)
+}
+
+export async function countSettlements(q: string, status: string) {
+  const where: string[] = []
+  const params: any = {}
+  if (q) { where.push(`(s.order_id LIKE $q OR s.id LIKE $q OR o.order_number LIKE $q)`); params.$q = `%${q}%` }
+  if (status && status !== 'all') { where.push(`s.status = $status`); params.$status = status }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const rows = await queryAll(`SELECT COUNT(*) as c FROM settlements s LEFT JOIN orders o ON o.id=s.order_id ${whereSql}`, params)
+  return rows[0]?.c || 0
+}
+
+export async function upsertSettlement(s: any) {
+  await exec(`INSERT INTO settlements(id,order_id,status,settlement_time,risk_level)
+              VALUES($id,$oid,$st,$tm,$rl)
+              ON CONFLICT(id) DO UPDATE SET
+                order_id=$oid, status=$st, settlement_time=$tm, risk_level=$rl`,{
+    $id:s.id,$oid:s.orderId,$st:s.status,$tm:s.settlementTime||0,$rl:s.riskLevel||'low'
+  })
+}
+
+export async function deleteSettlement(id: string) {
+  await exec(`DELETE FROM settlements WHERE id=$id`, { $id: id })
+}
+
+// --- Inventory/Warehouse CRUD ---
+
+export async function getInventoryPaged(q: string, offset: number, limit: number) {
+  const where: string[] = []
+  const params: any = { $offset: offset, $limit: limit }
+  if (q) { where.push(`(name LIKE $q)`); params.$q = `%${q}%` }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  return queryAll(`SELECT name, current, target, production, sales, efficiency FROM inventory ${whereSql} ORDER BY name LIMIT $limit OFFSET $offset`, params)
+}
+
+export async function countInventory(q: string) {
+  const where: string[] = []
+  const params: any = {}
+  if (q) { where.push(`(name LIKE $q)`); params.$q = `%${q}%` }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const rows = await queryAll(`SELECT COUNT(*) as c FROM inventory ${whereSql}`, params)
+  return rows[0]?.c || 0
+}
+
+export async function upsertInventory(i: any) {
+  await exec(`INSERT INTO inventory(name,current,target,production,sales,efficiency)
+              VALUES($n,$c,$tg,$p,$s,$e)
+              ON CONFLICT(name) DO UPDATE SET
+                current=$c, target=$tg, production=$p, sales=$s, efficiency=$e`,{
+    $n:i.name,$c:i.current||0,$tg:i.target||0,$p:i.production||0,$s:i.sales||0,$e:i.efficiency||0
+  })
+}
+
+export async function deleteInventory(name: string) {
+  await exec(`DELETE FROM inventory WHERE name=$n`, { $n: name })
+}
+
+// --- Helper for Linkage ---
+export async function getLinkableOrders(type: 'customs'|'logistics'|'settlement') {
+  // Return orders that are eligible for the next step
+  // customs: created but not declared (or declared but allows multi?) -> simplify: all orders without customs
+  // logistics: cleared customs but not shipped -> simplify: orders with customs cleared but no logistics
+  // settlement: shipped but not paid -> simplify: orders with logistics but no settlement
+  
+  if (type === 'customs') {
+    return queryAll(`SELECT id, order_number FROM orders WHERE id NOT IN (SELECT order_id FROM customs_headers) AND id NOT IN (SELECT order_id FROM customs_clearances) ORDER BY created_at DESC`)
+  }
+  if (type === 'logistics') {
+    // Ideally: customs cleared
+    return queryAll(`SELECT o.id, o.order_number FROM orders o 
+      WHERE (EXISTS(SELECT 1 FROM customs_headers ch WHERE ch.order_id=o.id AND ch.status='released') 
+             OR EXISTS(SELECT 1 FROM customs_clearances cc WHERE cc.order_id=o.id AND cc.status='cleared'))
+      AND o.id NOT IN (SELECT order_id FROM logistics)`)
+  }
+  if (type === 'settlement') {
+    return queryAll(`SELECT o.id, o.order_number FROM orders o 
+      WHERE o.id NOT IN (SELECT order_id FROM settlements)`)
+  }
+  return []
 }

@@ -12,6 +12,10 @@ const Collaboration = React.lazy(() => import('./pages/CollaborationWorkbench').
 const Acceptance = React.lazy(() => import('./pages/AcceptanceTraceability').then(module => ({ default: module.AcceptanceTraceability })));
 const Enterprises = React.lazy(() => import('./pages/Enterprises').then(module => ({ default: module.Enterprises })));
 const Customs = React.lazy(() => import('./pages/Customs').then(module => ({ default: module.Customs })));
+const Logistics = React.lazy(() => import('./pages/Logistics').then(module => ({ default: module.Logistics })));
+const Payment = React.lazy(() => import('./pages/Payment').then(module => ({ default: module.Payment })));
+const Warehouse = React.lazy(() => import('./pages/Warehouse').then(module => ({ default: module.Warehouse })));
+const OrderManagement = React.lazy(() => import('./pages/OrderManagement').then(module => ({ default: module.OrderManagement })));
 
 function App() {
   return (
@@ -22,6 +26,11 @@ function App() {
           <Route path="/capabilities" element={
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
               <Capabilities />
+            </React.Suspense>
+          } />
+          <Route path="/orders" element={
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
+              <OrderManagement />
             </React.Suspense>
           } />
           <Route path="/collaboration" element={
@@ -42,6 +51,21 @@ function App() {
           <Route path="/customs" element={
             <React.Suspense fallback={<div className="flex items中心 justify-center h-64 text白">加载中...</div>}>
               <Customs />
+            </React.Suspense>
+          } />
+          <Route path="/logistics" element={
+            <React.Suspense fallback={<div className="flex items中心 justify-center h-64 text白">加载中...</div>}>
+              <Logistics />
+            </React.Suspense>
+          } />
+          <Route path="/payment" element={
+            <React.Suspense fallback={<div className="flex items中心 justify-center h-64 text白">加载中...</div>}>
+              <Payment />
+            </React.Suspense>
+          } />
+          <Route path="/warehouse" element={
+            <React.Suspense fallback={<div className="flex items中心 justify-center h-64 text白">加载中...</div>}>
+              <Warehouse />
             </React.Suspense>
           } />
           <Route path="/settings" element={<Settings />} />

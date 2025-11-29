@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { HudPanel, GlowButton } from '../components/ui/HudPanel'
-import { getCustomsHeadersPaged, countCustomsHeaders, getCustomsItems, upsertCustomsHeader, insertCustomsItem, computeTaxes, ensureCustomsTables, getHsChapters, getHsHeadings, getHsSubheadings, getPorts } from '../lib/sqlite'
+import { getCustomsHeadersPaged, countCustomsHeaders, getCustomsItems, upsertCustomsHeader, insertCustomsItem, computeTaxes, ensureCustomsTables, getHsChapters, getHsHeadings, getHsSubheadings, getPorts, getLinkableOrders, queryAll } from '../lib/sqlite'
 import * as XLSX from 'xlsx'
 
 export const Customs: React.FC = () => {
@@ -27,6 +27,9 @@ export const Customs: React.FC = () => {
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [file, setFile] = useState<File | null>(null)
+  const [showModal, setShowModal] = useState(false)
+  const [linkableOrders, setLinkableOrders] = useState<any[]>([])
+  const [newDeclOrder, setNewDeclOrder] = useState('')
 
   useEffect(() => { void ensureCustomsTables() }, [])
   useEffect(() => { const id = setTimeout(async () => { setPorts(await getPorts() as any) }, 0); return () => clearTimeout(id) }, [])
@@ -44,6 +47,13 @@ export const Customs: React.FC = () => {
   }, [q, status, port, mode, hsChapter, hsHead, hsSub, page, pageSize])
 
   useEffect(() => { const id = setTimeout(() => { void load() }, 0); return () => clearTimeout(id) }, [load])
+  useEffect(() => {
+    const vh = window.innerHeight || 900
+    const reserved = 360
+    const rowH = 54
+    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
+    if (df !== pageSize) setPageSize(df)
+  }, [])
   useEffect(() => {
     const id = setTimeout(async () => { setChapters(await getHsChapters()) }, 0)
     return () => clearTimeout(id)
@@ -179,11 +189,63 @@ export const Customs: React.FC = () => {
     await load()
   }
 
+  const handleCreate = async () => {
+    const orders = await getLinkableOrders('customs')
+    setLinkableOrders(orders)
+    setNewDeclOrder('')
+    setShowModal(true)
+  }
+
+  const handleSaveDecl = async () => {
+    if (!newDeclOrder) return
+    const declNo = 'DEC' + Date.now()
+    const headerId = 'H_' + declNo
+    const [o] = await queryAll(`SELECT order_number as orderNumber, enterprise, category, amount, currency FROM orders WHERE id=$id`, { $id: newDeclOrder })
+    const enterprise = o?.enterprise || '未命名企业'
+    const currency = o?.currency || 'CNY'
+    const amountTotal = Number(o?.amount || 0)
+    await upsertCustomsHeader({
+      id: headerId,
+      declarationNo: declNo,
+      enterprise,
+      status: 'declared',
+      orderId: newDeclOrder,
+      currency,
+      totalValue: amountTotal,
+      declareDate: new Date().toISOString().slice(0,10)
+    })
+    const cfg = (cat:string)=>{
+      if (cat==='beauty') return { hs:'3304.9900', unit:'kg', names:['面膜','乳霜','口红'] }
+      if (cat==='electronics') return { hs:'8517.1200', unit:'pcs', names:['手机','路由器','适配器'] }
+      if (cat==='wine') return { hs:'2204.2100', unit:'L', names:['葡萄酒','起泡酒','烈酒'] }
+      if (cat==='textile') return { hs:'6109.1000', unit:'pcs', names:['T恤','针织衫','内衣'] }
+      if (cat==='appliance') return { hs:'8509.8000', unit:'pcs', names:['料理机','吸尘器','电水壶'] }
+      return { hs:'8537.1000', unit:'pcs', names:['商品A','商品B','商品C'] }
+    }
+    const { hs, unit, names } = cfg(String(o?.category||''))
+    const fx = (cur:string) => cur==='USD'?7.12:cur==='EUR'?7.80:cur==='GBP'?8.90:cur==='JPY'?0.05:1
+    const n = 3
+    let remaining = amountTotal || 0
+    for (let i=0;i<n;i++) {
+      const share = i===n-1 ? remaining : Math.round(((amountTotal||0) * (0.2 + Math.random()*0.3)) * 100)/100
+      remaining = Math.max(0, remaining - share)
+      const name = names[i%names.length]
+      const unitPrice = unit==='kg' ? 120 : unit==='L' ? 80 : 300
+      const qtyRaw = unitPrice>0 ? share / unitPrice : 1
+      const qty = Math.max(1, Math.round(qtyRaw * 100) / 100)
+      const tax = computeTaxes(hs, share * fx(currency))
+      await insertCustomsItem({ id: `${headerId}_${i+1}`, headerId, lineNo: i+1, hsCode: hs, name, spec: 'Standard', unit, qty, unitPrice, amount: share, originCountry: 'CN', taxRate: (Math.round((tax.tariffRate+tax.vatRate+tax.exciseRate)*1000)/1000), tariff: tax.tariff, excise: tax.excise, vat: tax.vat })
+    }
+    setShowModal(false)
+    load()
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-white">报关管理</h1>
         <div className="flex items-center gap-2">
+          <GlowButton onClick={handleCreate}>+ 新增申报</GlowButton>
           <input type="file" accept=".xlsx,.xls" onChange={(e)=>setFile(e.target.files?.[0]||null)} className="text-white" />
           <GlowButton onClick={parseExcel}>导入</GlowButton>
         </div>
@@ -224,11 +286,6 @@ export const Customs: React.FC = () => {
             {subs.map(s=> (<option key={s} value={s}>{s}</option>))}
           </select>
           <input value={hsQuick} onChange={(e)=>{ const v = (e.target.value||'').replace(/\D/g,''); setPage(1); setHsQuick(v); if (v.length>=8) { setHsSub(v.slice(0,8)); setHsHead('all'); setHsChapter('all') } else if (v.length>=4) { setHsHead(v.slice(0,4)); setHsChapter('all'); setHsSub('all') } else if (v.length>=2) { setHsChapter(v.slice(0,2)); setHsHead('all'); setHsSub('all') } else { setHsChapter('all'); setHsHead('all'); setHsSub('all') } }} placeholder="HS快速筛选 2/4/8位" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白" />
-          <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白">
-            <option value={10}>10/页</option>
-            <option value={20}>20/页</option>
-            <option value={50}>50/页</option>
-          </select>
           <label className="inline-flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" checked={onlyBadHs} onChange={(e)=>{ setPage(1); setOnlyBadHs(e.target.checked) }} /> 仅不完整HS</label>
           <label className="inline-flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" checked={onlyMissingUnit} onChange={(e)=>{ setPage(1); setOnlyMissingUnit(e.target.checked) }} /> 仅缺计量单位</label>
           <label className="inline-flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" checked={onlyAbnormalQty} onChange={(e)=>{ setPage(1); setOnlyAbnormalQty(e.target.checked) }} /> 仅数量异常</label>
@@ -252,7 +309,17 @@ export const Customs: React.FC = () => {
               ))}
             </div>
             <div className="mt-3 flex items-center justify-between">
-              <div className="text-xs text-gray-400">共 {total} 条</div>
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <span>共 {total} 条</span>
+                <span>|</span>
+                <span>每页</span>
+                <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text白">
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
               <div className="flex items-center gap-2">
                 <button onClick={()=>setPage(p=>Math.max(1,p-1))} className="px-3 py-1 rounded border border-slate-700 bg-slate-800/60 text白 disabled:opacity-50" disabled={page<=1}>上一页</button>
                 <div className="px-3 py-1 rounded border border-slate-700 bg-slate-800/60 text白">第 {page} 页</div>
@@ -297,6 +364,44 @@ export const Customs: React.FC = () => {
               <div className="mt-3">
                 <div className="text-sm text-gray-400 mb-2">商品项</div>
                 <div className="max-h-64 overflow-y-auto space-y-1">
+                  {items.length===0 && (
+                    <div className="px-2 py-2 rounded bg-slate-800/50 border border-slate-700 text-gray-300 flex items-center justify-between">
+                      <span>当前申报单暂无明细</span>
+                      <GlowButton size="sm" onClick={async()=>{
+                        if (!selected?.id) return
+                        const [h] = await queryAll(`SELECT order_id as orderId, currency FROM customs_headers WHERE id=$id`, { $id: selected.id })
+                        const orderId = h?.orderId || ''
+                        if (!orderId) return
+                        const [o] = await queryAll(`SELECT currency, category, amount FROM orders WHERE id=$id`, { $id: orderId })
+                        const currency = o?.currency || 'CNY'
+                        const amountTotal = Number(o?.amount || 0)
+                        const cfg = (cat:string)=>{
+                          if (cat==='beauty') return { hs:'3304.9900', unit:'kg', names:['面膜','乳霜','口红'] }
+                          if (cat==='electronics') return { hs:'8517.1200', unit:'pcs', names:['手机','路由器','适配器'] }
+                          if (cat==='wine') return { hs:'2204.2100', unit:'L', names:['葡萄酒','起泡酒','烈酒'] }
+                          if (cat==='textile') return { hs:'6109.1000', unit:'pcs', names:['T恤','针织衫','内衣'] }
+                          if (cat==='appliance') return { hs:'8509.8000', unit:'pcs', names:['料理机','吸尘器','电水壶'] }
+                          return { hs:'8537.1000', unit:'pcs', names:['商品A','商品B','商品C'] }
+                        }
+                        const { hs, unit, names } = cfg(String(o?.category||''))
+                        const fx = (cur:string) => cur==='USD'?7.12:cur==='EUR'?7.80:cur==='GBP'?8.90:cur==='JPY'?0.05:1
+                        const n = 3
+                        let remaining = amountTotal || 0
+                        for (let i=0;i<n;i++) {
+                          const share = i===n-1 ? remaining : Math.round(((amountTotal||0) * (0.2 + Math.random()*0.3)) * 100)/100
+                          remaining = Math.max(0, remaining - share)
+                          const name = names[i%names.length]
+                          const unitPrice = unit==='kg' ? 120 : unit==='L' ? 80 : 300
+                          const qtyRaw = unitPrice>0 ? share / unitPrice : 1
+                          const qty = Math.max(1, Math.round(qtyRaw * 100) / 100)
+                          const tax = computeTaxes(hs, share * fx(currency))
+                          await insertCustomsItem({ id: `${selected.id}_${i+1}`, headerId: selected.id, lineNo: i+1, hsCode: hs, name, spec: 'Standard', unit, qty, unitPrice, amount: share, originCountry: 'CN', taxRate: (Math.round((tax.tariffRate+tax.vatRate+tax.exciseRate)*1000)/1000), tariff: tax.tariff, excise: tax.excise, vat: tax.vat })
+                        }
+                        const its = await getCustomsItems(selected.id)
+                        setItems(its)
+                      }}>一键生成报关明细</GlowButton>
+                    </div>
+                  )}
                   {items.map(it=> (
                     <div key={it.id} className="px-2 py-2 rounded bg-slate-800/50 border border-slate-700 text白">
                       <div className="flex items-center justify-between">
@@ -316,6 +421,36 @@ export const Customs: React.FC = () => {
           )}
         </div>
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[400px] shadow-2xl">
+            <h2 className="text-xl font-bold text-white mb-4">新增报关申报</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">选择关联订单 (未申报)</label>
+                <select 
+                  value={newDeclOrder} 
+                  onChange={(e) => setNewDeclOrder(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
+                >
+                  <option value="">请选择订单...</option>
+                  {linkableOrders.map(o => (
+                    <option key={o.id} value={o.id}>{o.order_number} (ID: {o.id})</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-gray-500">
+                系统将自动从订单生成申报单草稿，并进行预归类校验。
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={() => setShowModal(false)} className="px-4 py-2 text-gray-400 hover:text-white">取消</button>
+              <GlowButton onClick={handleSaveDecl} disabled={!newDeclOrder}>生成申报单</GlowButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
