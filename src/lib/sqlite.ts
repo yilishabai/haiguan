@@ -1178,7 +1178,7 @@ export function computeTaxes(hsCode: string, amount: number) {
   return { tariffRate, vatRate, exciseRate, tariff, vat, excise }
 }
 
-export async function getCustomsHeadersPaged(q: string, status: string, portCode: string, tradeMode: string, offset: number, limit: number, hsChap?: string, hsHead?: string, hsSub?: string, onlyBadHs?: boolean, onlyMissingUnit?: boolean, onlyAbnormalQty?: boolean) {
+export async function getCustomsHeadersPaged(q: string, status: string, portCode: string, tradeMode: string, offset: number, limit: number, hsChap?: string, hsHead?: string, hsSub?: string, onlyBadHs?: boolean, onlyMissingUnit?: boolean, onlyAbnormalQty?: boolean, orderId?: string) {
   const qs = new URLSearchParams()
   if (q) qs.set('q', q)
   if (status) qs.set('status', status)
@@ -1190,6 +1190,7 @@ export async function getCustomsHeadersPaged(q: string, status: string, portCode
   if (onlyBadHs) qs.set('onlyBadHs', 'true')
   if (onlyMissingUnit) qs.set('onlyMissingUnit', 'true')
   if (onlyAbnormalQty) qs.set('onlyAbnormalQty', 'true')
+  if (orderId) qs.set('orderId', orderId)
   qs.set('offset', String(offset))
   qs.set('limit', String(limit))
   const res = await fetch(`/api/customs/headers?${qs.toString()}`)
@@ -1197,7 +1198,7 @@ export async function getCustomsHeadersPaged(q: string, status: string, portCode
   return data
 }
 
-export async function countCustomsHeaders(q: string, status: string, portCode: string, tradeMode: string, hsChap?: string, hsHead?: string, hsSub?: string, onlyBadHs?: boolean, onlyMissingUnit?: boolean, onlyAbnormalQty?: boolean) {
+export async function countCustomsHeaders(q: string, status: string, portCode: string, tradeMode: string, hsChap?: string, hsHead?: string, hsSub?: string, onlyBadHs?: boolean, onlyMissingUnit?: boolean, onlyAbnormalQty?: boolean, orderId?: string) {
   const qs = new URLSearchParams()
   if (q) qs.set('q', q)
   if (status) qs.set('status', status)
@@ -1209,6 +1210,7 @@ export async function countCustomsHeaders(q: string, status: string, portCode: s
   if (onlyBadHs) qs.set('onlyBadHs', 'true')
   if (onlyMissingUnit) qs.set('onlyMissingUnit', 'true')
   if (onlyAbnormalQty) qs.set('onlyAbnormalQty', 'true')
+  if (orderId) qs.set('orderId', orderId)
   const res = await fetch(`/api/customs/headers/count?${qs.toString()}`)
   const json = await res.json()
   return json.count || 0
@@ -1296,14 +1298,33 @@ export async function updateSettlementStatus(id: string, status: string) {
 }
 
 export async function getSettlementByOrder(orderId: string) {
-  const rows = await queryAll(`SELECT id, status, settlement_time as settlementTime, risk_level as riskLevel, payment_method as paymentMethod FROM settlements WHERE order_id=$oid LIMIT 1`, { $oid: orderId })
+  const res = await fetch(`/api/settlements?q=${encodeURIComponent(orderId)}&offset=0&limit=1`)
+  const rows = await res.json()
   return rows[0] || null
 }
 
 export async function completeSettlement(orderId: string, method: string) {
-  const r = (await queryAll(`SELECT avg_time as t, success_rate as sr FROM payments WHERE method=$m LIMIT 1`, { $m: method }))[0] || {}
-  const t = r.t || 2.0
-  await exec(`UPDATE settlements SET status='completed', settlement_time=$t, risk_level='low', payment_method=$m WHERE order_id=$oid`, { $t: t, $m: method, $oid: orderId })
+  const existing = await getSettlementByOrder(orderId)
+  const payload: any = {
+    id: existing?.id || ('S' + Date.now()),
+    order_id: orderId,
+    status: 'completed',
+    settlement_time: existing?.settlementTime || 0,
+    risk_level: existing?.riskLevel || 'low'
+  }
+  await fetch('/api/settlements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+}
+
+export async function getLatestLogisticsByOrder(orderId: string) {
+  const res = await fetch(`/api/logistics?q=${encodeURIComponent(orderId)}&offset=0&limit=1`)
+  const rows = await res.json()
+  return rows[0] || null
+}
+
+export async function getCustomsHeaderByOrder(orderId: string) {
+  const res = await fetch(`/api/customs/headers?orderId=${encodeURIComponent(orderId)}&offset=0&limit=1`)
+  const rows = await res.json()
+  return rows[0] || null
 }
 
 export async function getCustomsClearances() {
@@ -1351,12 +1372,42 @@ export async function getInventoryData() {
   return queryAll(`SELECT name, current, target, production, sales, efficiency FROM inventory`)
 }
 
-export async function getAlgorithms() {
-  return queryAll(`SELECT * FROM algorithms ORDER BY lastUpdated DESC, usage DESC`)
+export async function getAlgorithms(q: string = '', offset: number = 0, limit: number = 100) {
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  qs.set('offset', String(offset))
+  qs.set('limit', String(limit))
+  const res = await fetch(`/api/algorithms?${qs.toString()}`)
+  const data = await res.json()
+  return data
 }
 
-export async function getBusinessModels() {
-  return queryAll(`SELECT * FROM business_models`)
+export async function countAlgorithms(q: string = '') {
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  const res = await fetch(`/api/algorithms/count?${qs.toString()}`)
+  const json = await res.json()
+  return json.count || 0
+}
+
+export async function getBusinessModels(q: string = '', category: string = 'all', offset: number = 0, limit: number = 50) {
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (category) qs.set('category', category)
+  qs.set('offset', String(offset))
+  qs.set('limit', String(limit))
+  const res = await fetch(`/api/business_models?${qs.toString()}`)
+  const data = await res.json()
+  return data
+}
+
+export async function countBusinessModels(q: string = '', category: string = 'all') {
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (category) qs.set('category', category)
+  const res = await fetch(`/api/business_models/count?${qs.toString()}`)
+  const json = await res.json()
+  return json.count || 0
 }
 
 export async function getBusinessModelForOrder(orderId: string) {
@@ -1460,35 +1511,27 @@ export async function upsertBusinessModel(model: {
   lastUpdated: string,
   maintainer: string
 }) {
-  await exec(`CREATE TABLE IF NOT EXISTS business_models (
-    id TEXT PRIMARY KEY,
-    name TEXT,
-    category TEXT,
-    version TEXT,
-    status TEXT,
-    enterprises INTEGER,
-    orders INTEGER,
-    description TEXT,
-    scenarios TEXT,
-    compliance TEXT,
-    chapters TEXT,
-    successRate REAL,
-    lastUpdated TEXT,
-    maintainer TEXT
-  )`)
-  await exec(`INSERT INTO business_models(id,name,category,version,status,enterprises,orders,description,scenarios,compliance,chapters,successRate,lastUpdated,maintainer)
-              VALUES($id,$n,$c,$v,$s,$e,$o,$d,$sc,$cp,$ch,$sr,$lu,$mt)
-              ON CONFLICT(id) DO UPDATE SET
-                name=$n, category=$c, version=$v, status=$s, enterprises=$e, orders=$o, description=$d,
-                scenarios=$sc, compliance=$cp, chapters=$ch, successRate=$sr, lastUpdated=$lu, maintainer=$mt`,{
-    $id:model.id,$n:model.name,$c:model.category,$v:model.version,$s:model.status,$e:model.enterprises,$o:model.orders,
-    $d:model.description,$sc:JSON.stringify(model.scenarios),$cp:JSON.stringify(model.compliance),$ch:JSON.stringify(model.chapters||[]),$sr:model.successRate,
-    $lu:model.lastUpdated,$mt:model.maintainer
-  })
+  const payload = {
+    id: model.id,
+    name: model.name,
+    category: model.category,
+    version: model.version,
+    status: model.status,
+    enterprises: model.enterprises,
+    orders: model.orders,
+    description: model.description,
+    scenarios: JSON.stringify(model.scenarios),
+    compliance: JSON.stringify(model.compliance),
+    chapters: JSON.stringify(model.chapters || []),
+    success_rate: model.successRate,
+    last_updated: model.lastUpdated,
+    maintainer: model.maintainer
+  }
+  await fetch('/api/business_models', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
 }
 
 export async function deleteBusinessModel(id: string) {
-  await exec(`DELETE FROM business_models WHERE id=$id`, { $id:id })
+  await fetch(`/api/business_models/${id}`, { method: 'DELETE' })
 }
 
 // Enterprises dataset
@@ -1526,7 +1569,25 @@ export async function getAuditLogs() {
 }
 
 export async function updateAlgorithmCode(id: string, code: string) {
-  await exec(`UPDATE algorithms SET code=$co WHERE id=$id`, { $co: code, $id: id })
+  const rows = await getAlgorithms(id, 0, 1)
+  const r = rows[0]
+  if (!r) return
+  const payload = {
+    id: r.id,
+    name: r.name,
+    category: r.category,
+    version: r.version,
+    status: r.status,
+    accuracy: r.accuracy,
+    performance: r.performance,
+    usage: r.usage,
+    description: r.description,
+    features: Array.isArray(r.features) ? JSON.stringify(r.features) : (r.features || '[]'),
+    last_updated: r.lastUpdated || r.last_updated,
+    author: r.author,
+    code: code
+  }
+  await fetch('/api/algorithms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
 }
 
 export async function getSettings() {
@@ -2027,11 +2088,28 @@ export async function getLinkableOrders(type: 'customs'|'logistics'|'settlement'
       ORDER BY o.created_at DESC`)
   }
   if (type === 'logistics') {
-    // Ideally: customs cleared
-    return queryAll(`SELECT o.id, o.order_number FROM orders o 
-      WHERE (EXISTS(SELECT 1 FROM customs_headers ch WHERE ch.order_id=o.id AND ch.status='cleared') 
-             OR EXISTS(SELECT 1 FROM customs_clearances cc WHERE cc.order_id=o.id AND cc.status='cleared'))
-      AND NOT EXISTS(SELECT 1 FROM logistics lg WHERE lg.order_id IS NOT NULL AND lg.order_id!='' AND lg.order_id=o.id)`)
+    return queryAll(`
+      SELECT 
+        o.id, 
+        o.order_number,
+        (
+          SELECT ch.status 
+          FROM customs_headers ch 
+          WHERE ch.order_id = o.id 
+          ORDER BY ch.declare_date DESC, ch.updated_at DESC 
+          LIMIT 1
+        ) AS customs_status,
+        CASE WHEN EXISTS(
+          SELECT 1 FROM customs_headers ch 
+          WHERE ch.order_id=o.id AND ch.status IN ('cleared','released')
+        ) THEN 1 ELSE 0 END AS eligible
+      FROM orders o 
+      WHERE EXISTS(
+        SELECT 1 FROM customs_headers ch2 
+        WHERE ch2.order_id=o.id AND ch2.status IN ('cleared','released','declared','inspecting','held')
+      )
+        AND NOT EXISTS(SELECT 1 FROM logistics lg WHERE lg.order_id IS NOT NULL AND lg.order_id!='' AND lg.order_id=o.id)
+      ORDER BY o.created_at DESC`)
   }
   if (type === 'settlement') {
     return queryAll(`SELECT o.id, o.order_number FROM orders o 

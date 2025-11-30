@@ -1,19 +1,17 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState, useContext } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
 import { getSettlementsPaged, countSettlements, upsertSettlement, deleteSettlement, getLinkableOrders, enqueueJob, applyBusinessModel, queryAll } from '../lib/sqlite'
 import { CreditCard, ShieldCheck, AlertTriangle } from 'lucide-react'
+import { RoleContext } from '../components/layout/MainLayout'
 
 export const Payment: React.FC = () => {
+  const { role } = useContext(RoleContext)
+  const canEdit = role === 'finance'
+  const canApprove = role === 'director'
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(() => {
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 900
-    const reserved = 360
-    const rowH = 64
-    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
-    return df
-  })
+  const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
   const [rows, setRows] = useState<any[]>([])
   const [showModal, setShowModal] = useState(false)
@@ -44,7 +42,7 @@ export const Payment: React.FC = () => {
     setTotal(cnt)
   }, [q, status, page, pageSize])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { const id = setTimeout(() => { load() }, 0); return () => clearTimeout(id) }, [load])
 
   const handleCreate = async () => {
     const orders = await getLinkableOrders('settlement')
@@ -102,7 +100,7 @@ export const Payment: React.FC = () => {
           </h1>
           <p className="text-gray-400">全球资金清算与外汇风险管理</p>
         </div>
-        <GlowButton onClick={handleCreate}>+ 发起结算</GlowButton>
+        {canEdit && (<GlowButton onClick={handleCreate}>+ 发起结算</GlowButton>)}
       </div>
 
       <HudPanel className="p-4">
@@ -158,20 +156,25 @@ export const Payment: React.FC = () => {
                       row.riskLevel === 'medium' ? 'text-yellow-400' : 'text-red-400'
                     }`}>
                       {row.riskLevel === 'low' ? <ShieldCheck size={14} /> : <AlertTriangle size={14} />}
-                      {row.riskLevel}
+                      {row.riskLevel === 'low' ? '低' : row.riskLevel === 'medium' ? '中' : '高'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-400">{row.advice || '-'}</td>
                   <td className="px-4 py-3 text-xs text-amber-300">{Array.isArray(row.riskMsgs) && row.riskMsgs.length>0 ? String(row.riskMsgs[0]) : '-'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      {row.status === 'pending' && (
+                      {canEdit && row.status === 'pending' && (
                         <button onClick={() => startProcessing(row)} className="px-2 py-1 text-xs bg-gray-800 rounded hover:bg-gray-700">开始结算</button>
                       )}
-                      {row.status === 'processing' && (
+                      {canEdit && row.status === 'processing' && (
                         <button onClick={() => completeSettlement(row)} className="px-2 py-1 text-xs bg-emerald-600 rounded hover:bg-emerald-500">标记完成</button>
                       )}
-                      <button onClick={() => handleDelete(row.id)} className="text-red-400 hover:text-red-300 text-xs underline">删除</button>
+                      {canApprove && row.status === 'processing' && (
+                        <button onClick={() => completeSettlement(row)} className="px-2 py-1 text-xs bg-amber-600 rounded hover:bg-amber-500">审批通过</button>
+                      )}
+                      {canEdit && (
+                        <button onClick={() => handleDelete(row.id)} className="text-red-400 hover:text-red-300 text-xs underline">删除</button>
+                      )}
                     </div>
                   </td>
               </tr>
@@ -225,7 +228,7 @@ export const Payment: React.FC = () => {
                 >
                   <option value="">选择订单...</option>
                   {linkableOrders.map(o => (
-                    <option key={o.id} value={o.id}>{o.order_number} (ID: {o.id})</option>
+                    <option key={o.id} value={o.id}>{o.order_number}（ID：{o.id}）</option>
                   ))}
                 </select>
               </div>
@@ -241,15 +244,15 @@ export const Payment: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">支付方式</label>
+                <label className="block text-sm text-gray-400 mb-1">支付方式（T/T 电汇，L/C 信用证，O/A 赊销）</label>
                 <select 
                   value={form.paymentMethod} 
                   onChange={(e) => setForm({...form, paymentMethod: e.target.value})}
                   className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
                 >
-                  <option value="T/T">T/T</option>
-                  <option value="L/C">L/C</option>
-                  <option value="OA">O/A</option>
+                  <option value="T/T">T/T（电汇）</option>
+                  <option value="L/C">L/C（信用证）</option>
+                  <option value="OA">O/A（赊销）</option>
                 </select>
               </div>
               <div>

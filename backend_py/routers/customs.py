@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from backend_py.db import SessionLocal
 from backend_py.models.customs import CustomsHeader, CustomsItem
@@ -14,7 +15,7 @@ def get_db():
         db.close()
 
 @router.get('/headers')
-def list_headers(q: str = '', status: str = 'all', portCode: str = 'all', tradeMode: str = 'all', hsChap: str = 'all', hsHead: str = 'all', hsSub: str = 'all', onlyBadHs: bool = False, onlyMissingUnit: bool = False, onlyAbnormalQty: bool = False, offset: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+def list_headers(q: str = '', status: str = 'all', portCode: str = 'all', tradeMode: str = 'all', hsChap: str = 'all', hsHead: str = 'all', hsSub: str = 'all', onlyBadHs: bool = False, onlyMissingUnit: bool = False, onlyAbnormalQty: bool = False, orderId: str = '', offset: int = 0, limit: int = 10, db: Session = Depends(get_db)):
     query = db.query(CustomsHeader)
     if q:
         query = query.filter((CustomsHeader.declaration_no.like(f'%{q}%')) | (CustomsHeader.enterprise.like(f'%{q}%')))
@@ -24,6 +25,8 @@ def list_headers(q: str = '', status: str = 'all', portCode: str = 'all', tradeM
         query = query.filter(CustomsHeader.port_code == portCode)
     if tradeMode and tradeMode != 'all':
         query = query.filter(CustomsHeader.trade_mode == tradeMode)
+    if orderId:
+        query = query.filter(CustomsHeader.order_id == orderId)
     if hsChap and hsChap != 'all':
         query = query.filter(db.query(CustomsItem).filter(CustomsItem.header_id == CustomsHeader.id).filter(func.substr(func.replace(CustomsItem.hs_code, '.', ''), 1, 2) == hsChap).exists())
     if hsHead and hsHead != 'all':
@@ -51,7 +54,7 @@ def list_headers(q: str = '', status: str = 'all', portCode: str = 'all', tradeM
     } for r in rows]
 
 @router.get('/headers/count')
-def count_headers(q: str = '', status: str = 'all', portCode: str = 'all', tradeMode: str = 'all', hsChap: str = 'all', hsHead: str = 'all', hsSub: str = 'all', onlyBadHs: bool = False, onlyMissingUnit: bool = False, onlyAbnormalQty: bool = False, db: Session = Depends(get_db)):
+def count_headers(q: str = '', status: str = 'all', portCode: str = 'all', tradeMode: str = 'all', hsChap: str = 'all', hsHead: str = 'all', hsSub: str = 'all', onlyBadHs: bool = False, onlyMissingUnit: bool = False, onlyAbnormalQty: bool = False, orderId: str = '', db: Session = Depends(get_db)):
     query = db.query(CustomsHeader)
     if q:
         query = query.filter((CustomsHeader.declaration_no.like(f'%{q}%')) | (CustomsHeader.enterprise.like(f'%{q}%')))
@@ -61,6 +64,8 @@ def count_headers(q: str = '', status: str = 'all', portCode: str = 'all', trade
         query = query.filter(CustomsHeader.port_code == portCode)
     if tradeMode and tradeMode != 'all':
         query = query.filter(CustomsHeader.trade_mode == tradeMode)
+    if orderId:
+        query = query.filter(CustomsHeader.order_id == orderId)
     if hsChap and hsChap != 'all':
         query = query.filter(db.query(CustomsItem).filter(CustomsItem.header_id == CustomsHeader.id).filter(func.substr(func.replace(CustomsItem.hs_code, '.', ''), 1, 2) == hsChap).exists())
     if hsHead and hsHead != 'all':

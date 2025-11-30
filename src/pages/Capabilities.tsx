@@ -3,7 +3,7 @@ import { Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Po
 import * as echarts from 'echarts';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
 import { Brain, Cpu, Database, TrendingUp, Target, Zap, Play, RefreshCw, Download, Upload, Eye, Edit, Trash2, Terminal, X, FileCode, FileText } from 'lucide-react';
-import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll } from '../lib/sqlite';
+import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll, countAlgorithms, countBusinessModels } from '../lib/sqlite';
 
 // 算法库数据
 const algorithmLibrary = [
@@ -312,7 +312,9 @@ const UploadModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
 export const Capabilities: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'algorithms' | 'models'>('algorithms');
   const [algorithms, setAlgorithms] = useState<any[]>([]);
+  const [algTotal, setAlgTotal] = useState(0);
   const [models, setModels] = useState<any[]>([]);
+  const [modelTotal, setModelTotal] = useState(0);
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<any | null>(null);
   const [selectedModel, setSelectedModel] = useState<any | null>(null);
   const [algPage, setAlgPage] = useState(1);
@@ -348,12 +350,18 @@ export const Capabilities: React.FC = () => {
 
   useEffect(() => {
     const load = async () => {
-      const a = await getAlgorithms();
-      const m = await getBusinessModels();
-      const aa = a.map((x: any) => ({ ...x, features: JSON.parse(x.features) }));
-      const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance), chapters: x.chapters ? JSON.parse(x.chapters) : [] }));
+      const a = await getAlgorithms('', (algPage-1)*algPageSize, algPageSize);
+      const m = await getBusinessModels('', 'all', 0, 50);
+      const [ac, mc] = await Promise.all([
+        countAlgorithms(''),
+        countBusinessModels('', 'all')
+      ])
+      const aa = a.map((x: any) => ({ ...x, features: Array.isArray(x.features) ? x.features : JSON.parse(x.features || '[]') }));
+      const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios || '[]'), compliance: JSON.parse(x.compliance || '[]'), chapters: x.chapters ? JSON.parse(x.chapters) : [] }));
       setAlgorithms(aa);
+      setAlgTotal(ac || aa.length);
       setModels(mm);
+      setModelTotal(mc || mm.length);
       setSelectedAlgorithm(aa[0] || null);
       setSelectedModel(mm[0] || null);
       setAlgPage(1);
@@ -361,7 +369,7 @@ export const Capabilities: React.FC = () => {
       setOrderList(os)
     };
     load();
-  }, []);
+  }, [algPage, algPageSize]);
 
   const openNewModel = () => {
     setModelForm({ id:'bm-'+Date.now(), name:'', category:'beauty', version:'v1.0.0', status:'active', enterprises:0, orders:0, description:'', scenarios:'', compliance:'', chapters:'', successRate:90, lastUpdated:new Date().toISOString().slice(0,10), maintainer:'' })
@@ -519,7 +527,7 @@ export const Capabilities: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <DataCard
               title="总算法数"
-              value={algorithms.length}
+              value={algTotal}
               unit="个"
               status="active"
             >
@@ -1006,7 +1014,7 @@ export const Capabilities: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <DataCard
               title="总模型数"
-              value={models.length}
+              value={modelTotal}
               unit="个"
               status="active"
             >

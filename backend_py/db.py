@@ -12,5 +12,6 @@ def init_db():
     import backend_py.models.settlements
     import backend_py.models.warehouse
     import backend_py.models.algorithms
+    import backend_py.models.business_models
     import backend_py.models.jobs
     Base.metadata.create_all(bind=engine)

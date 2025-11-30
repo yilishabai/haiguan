@@ -44,27 +44,27 @@ function App() {
             </React.Suspense>
           } />
           <Route path="/enterprises" element={
-            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text白">加载中...</div>}>
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
               <Enterprises />
             </React.Suspense>
           } />
           <Route path="/customs" element={
-            <React.Suspense fallback={<div className="flex items中心 justify-center h-64 text白">加载中...</div>}>
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
               <Customs />
             </React.Suspense>
           } />
           <Route path="/logistics" element={
-            <React.Suspense fallback={<div className="flex items中心 justify-center h-64 text白">加载中...</div>}>
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
               <Logistics />
             </React.Suspense>
           } />
           <Route path="/payment" element={
-            <React.Suspense fallback={<div className="flex items中心 justify-center h-64 text白">加载中...</div>}>
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
               <Payment />
             </React.Suspense>
           } />
           <Route path="/warehouse" element={
-            <React.Suspense fallback={<div className="flex items中心 justify-center h-64 text白">加载中...</div>}>
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
               <Warehouse />
             </React.Suspense>
           } />
@@ -128,9 +128,9 @@ function Settings() {
         <HudPanel title="KPI基线设置">
           <div className="space-y-2">
             <div className="text-xs text-gray-400">协同准确率基线(%)</div>
-            <input value={settings.baseline_accuracy||''} onChange={(e)=>setSettings(s=>({ ...s, baseline_accuracy: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白" />
+            <input value={settings.baseline_accuracy||''} onChange={(e)=>setSettings(s=>({ ...s, baseline_accuracy: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
             <div className="text-xs text-gray-400">效率基线(%)</div>
-            <input value={settings.baseline_efficiency||''} onChange={(e)=>setSettings(s=>({ ...s, baseline_efficiency: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白" />
+            <input value={settings.baseline_efficiency||''} onChange={(e)=>setSettings(s=>({ ...s, baseline_efficiency: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white" />
             <div className="text-xs text-gray-500">用于Dashboard 提升幅度计算与验收对比</div>
           </div>
         </HudPanel>

@@ -1,18 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState, useContext } from 'react'
 import { HudPanel, GlowButton } from '../components/ui/HudPanel'
 import { getInventoryPaged, countInventory, upsertInventory, deleteInventory } from '../lib/sqlite'
 import { Factory, Package, ArrowDownCircle, TrendingUp } from 'lucide-react'
+import { RoleContext } from '../components/layout/MainLayout'
 
 export const Warehouse: React.FC = () => {
+  const { role } = useContext(RoleContext)
+  const canEdit = role === 'warehouse'
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(() => {
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 900
-    const reserved = 360
-    const rowH = 220
-    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
-    return df
-  })
+  const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -76,7 +73,7 @@ export const Warehouse: React.FC = () => {
           </h1>
           <p className="text-gray-400">库存动态平衡与柔性生产调度</p>
         </div>
-        <GlowButton onClick={handleCreate}>+ 新增品类</GlowButton>
+        {canEdit && (<GlowButton onClick={handleCreate}>+ 新增品类</GlowButton>)}
       </div>
 
       <HudPanel className="p-4">
@@ -88,6 +85,7 @@ export const Warehouse: React.FC = () => {
             className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white flex-1"
           />
         </div>
+        {loading && (<div className="text-gray-400 mb-2">加载中...</div>)}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {rows.map((row) => {
@@ -101,12 +99,14 @@ export const Warehouse: React.FC = () => {
                     <Package className="text-cyber-cyan" size={20} />
                     <h3 className="text-lg font-bold text-white">{row.name}</h3>
                   </div>
-                  <button 
-                    onClick={() => handleDelete(row.name)}
-                    className="text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    删除
-                  </button>
+                  {canEdit && (
+                    <button 
+                      onClick={() => handleDelete(row.name)}
+                      className="text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      删除
+                    </button>
+                  )}
                 </div>
                 
                 <div className="space-y-3">
@@ -234,7 +234,7 @@ export const Warehouse: React.FC = () => {
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-gray-400 hover:text-white">取消</button>
-              <GlowButton onClick={handleSave}>保存</GlowButton>
+              {canEdit && (<GlowButton onClick={handleSave}>保存</GlowButton>)}
             </div>
           </div>
         </div>

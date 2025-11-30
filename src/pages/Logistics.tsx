@@ -1,19 +1,16 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState, useContext } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
 import { getLogisticsPaged, countLogistics, upsertLogistics, deleteLogistics, getLinkableOrders, enqueueJob, queryAll } from '../lib/sqlite'
 import { Truck, MapPin } from 'lucide-react'
+import { RoleContext } from '../components/layout/MainLayout'
 
 export const Logistics: React.FC = () => {
+  const { role } = useContext(RoleContext)
+  const canEdit = role === 'logistics'
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(() => {
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 900
-    const reserved = 360
-    const rowH = 64
-    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
-    return df
-  })
+  const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
   const [rows, setRows] = useState<any[]>([])
   const [, setLoading] = useState(false)
@@ -23,8 +20,8 @@ export const Logistics: React.FC = () => {
   const [form, setForm] = useState<any>({
     id: '',
     trackingNo: '',
-    origin: 'China',
-    destination: 'USA',
+    origin: '中国',
+    destination: '美国',
     status: 'pickup',
     estimatedTime: 72,
     orderId: ''
@@ -54,8 +51,8 @@ export const Logistics: React.FC = () => {
     setForm({
       id: 'L' + Date.now(),
       trackingNo: 'TRK' + Date.now(),
-      origin: 'Shanghai, CN',
-      destination: 'Los Angeles, US',
+      origin: '上海，中国',
+      destination: '洛杉矶，美国',
       status: 'pickup',
       estimatedTime: 120,
       orderId: orders[0]?.id || ''
@@ -64,7 +61,7 @@ export const Logistics: React.FC = () => {
   }
 
   const handleSave = async () => {
-    const [c] = await queryAll(`SELECT COUNT(*) as c FROM customs_headers WHERE order_id=$id AND status='cleared'`, { $id: form.orderId })
+    const [c] = await queryAll(`SELECT COUNT(*) as c FROM customs_headers WHERE order_id=$id AND status IN ('cleared','released')`, { $id: form.orderId })
     const cleared = Number(c?.c || 0) > 0
     if (!cleared) { alert('该订单尚未清关，暂不允许发运'); return }
     await upsertLogistics(form)
@@ -88,7 +85,7 @@ export const Logistics: React.FC = () => {
           </h1>
           <p className="text-gray-400">跨境物流全链路追踪与调度</p>
         </div>
-        <GlowButton onClick={handleCreate}>+ 新建运单</GlowButton>
+        {canEdit && (<GlowButton onClick={handleCreate}>+ 新建运单</GlowButton>)}
       </div>
 
       <HudPanel className="p-4">
@@ -97,7 +94,7 @@ export const Logistics: React.FC = () => {
             value={q} 
             onChange={(e) => setQ(e.target.value)} 
             placeholder="搜索运单号/始发地/目的地/订单号..." 
-            className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text白 flex-1"
+            className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white flex-1"
           />
           <select 
             value={status} 
@@ -152,8 +149,12 @@ export const Logistics: React.FC = () => {
                   </td>
                   <td className="px-4 py-3 text-emerald-400">{row.efficiency}%</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => handleDelete(row.id)} className="text-red-400 hover:text-red-300 text-xs underline">删除</button>
-                    <button onClick={async()=>{ const next = row.status==='pickup' ? 'transit' : 'completed'; await enqueueJob('logistics_milestone', { id: row.id, next_status: next }); setTimeout(()=>{ load() }, 800) }} className="ml-2 px-2 py-1 text-xs bg-gray-800 rounded hover:bg-gray-700">推进里程碑</button>
+                    {canEdit && (
+                      <>
+                        <button onClick={() => handleDelete(row.id)} className="text-red-400 hover:text-red-300 text-xs underline">删除</button>
+                        <button onClick={async()=>{ const next = row.status==='pickup' ? 'transit' : 'completed'; await enqueueJob('logistics_milestone', { id: row.id, next_status: next }); setTimeout(()=>{ load() }, 800) }} className="ml-2 px-2 py-1 text-xs bg-gray-800 rounded hover:bg-gray-700">推进里程碑</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -165,7 +166,7 @@ export const Logistics: React.FC = () => {
             <span>共 {total} 条记录</span>
             <span>|</span>
             <span>每页</span>
-            <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text白">
+            <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white">
               <option value={5}>5</option>
               <option value={10}>10</option>
               <option value={20}>20</option>
@@ -205,10 +206,15 @@ export const Logistics: React.FC = () => {
                   className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
                 >
                   <option value="">选择订单...</option>
-                  {linkableOrders.map(o => (
-                    <option key={o.id} value={o.id}>{o.order_number} (ID: {o.id})</option>
+                  {linkableOrders.map((o:any) => (
+                    <option key={o.id} value={o.id} disabled={!o.eligible}>
+                      {o.order_number}（ID：{o.id}）{o.customs_status && o.customs_status!=='cleared' ? `｜${o.customs_status==='declared'?'已申报':o.customs_status==='inspecting'?'查验中':o.customs_status==='held'?'异常拦截':o.customs_status}` : ''}
+                    </option>
                   ))}
                 </select>
+                {linkableOrders.length===0 && (
+                  <div className="text-xs text-amber-300 mt-2">暂无可选订单。请前往报关管理将订单对应的报关单审批至“已放行/已清关”。供应链总监可在“已申报”状态使用“直接放行”。</div>
+                )}
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">运单号</label>
@@ -241,7 +247,7 @@ export const Logistics: React.FC = () => {
                 <select 
                   value={form.status} 
                   onChange={(e) => setForm({...form, status: e.target.value})}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text白"
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
                 >
                   <option value="pickup">已揽收</option>
                   <option value="transit">运输中</option>
@@ -250,6 +256,8 @@ export const Logistics: React.FC = () => {
                   <option value="completed">已签收</option>
                 </select>
               </div>
+              <div className="text-xs text-gray-500">FCL（整箱）/ LCL（拼箱），用于描述集装箱使用方式</div>
+              <div className="text-xs text-gray-500">ETA（预计到达时间），用于计划到港日期</div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">运输方式</label>
@@ -270,8 +278,8 @@ export const Logistics: React.FC = () => {
                     onChange={(e)=>setForm({...form, isFcl: e.target.value==='FCL'})}
                     className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
                   >
-                    <option value="FCL">FCL</option>
-                    <option value="LCL">LCL</option>
+                    <option value="FCL">FCL（整箱）</option>
+                    <option value="LCL">LCL（拼箱）</option>
                   </select>
                 </div>
               </div>
@@ -297,7 +305,7 @@ export const Logistics: React.FC = () => {
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-gray-400 hover:text-white">取消</button>
-              <GlowButton onClick={handleSave}>保存运单</GlowButton>
+              {canEdit && (<GlowButton onClick={handleSave}>保存运单</GlowButton>)}
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { CreditCard, Truck } from 'lucide-react'
 import { HudPanel, StatusBadge, GlowButton } from '../components/ui/HudPanel'
-import { queryAll, getPaymentMethods, completeSettlement, getAlgorithmRecommendations, getHsChapters, getIncotermsList, getTransportModes } from '../lib/sqlite'
+import { getPaymentMethods, completeSettlement, getAlgorithmRecommendations, getHsChapters, getIncotermsList, getTransportModes, getOrdersPaged, countOrders, countCustomsHeaders, getSettlementByOrder, getLatestLogisticsByOrder, getCustomsHeaderByOrder, getCustomsHeadersPaged } from '../lib/sqlite'
 
 export const CollaborationWorkbench: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<string | null>(null)
@@ -12,13 +12,7 @@ export const CollaborationWorkbench: React.FC = () => {
   const [category, setCategory] = useState<'all'|'beauty'|'electronics'|'wine'|'textile'|'appliance'>('all')
   const [onlyAbnormal, setOnlyAbnormal] = useState(false)
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(() => {
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 900
-    const reserved = 360
-    const rowH = 72
-    const df = Math.max(5, Math.min(50, Math.floor((vh - reserved) / rowH)))
-    return df
-  })
+  const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
   const [methods, setMethods] = useState<{ name:string; successRate:number; avgTime:number }[]>([])
   const [selectedMethod, setSelectedMethod] = useState<string>('')
@@ -31,62 +25,50 @@ export const CollaborationWorkbench: React.FC = () => {
   const [transportList, setTransportList] = useState<string[]>([])
 
   const load = useCallback(async () => {
-    const where: string[] = []
-    const params: any = { $limit: pageSize, $offset: (page-1)*pageSize }
-    if (q) { where.push(`(o.order_number LIKE $q OR o.enterprise LIKE $q)`); params.$q = `%${q}%` }
-    if (category !== 'all') { where.push(`o.category = $cat`); params.$cat = category }
-    if (onlyAbnormal) { where.push(`EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id AND c.status='held')`) }
-    if (hsChapter !== 'all') {
-      if (hsChapter === 'unclassified') {
-        where.push(`NOT EXISTS(SELECT 1 FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=o.id AND length(replace(ci.hs_code,'.',''))>=2)`)
-      } else {
-        where.push(`EXISTS(SELECT 1 FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=o.id AND substr(replace(ci.hs_code,'.',''),1,2)=$chap)`)
-        params.$chap = hsChapter
-      }
-    }
-    if (incoterms !== 'all') { where.push(`o.incoterms=$inc`); (params as any).$inc = incoterms }
-    if (transport !== 'all') { where.push(`EXISTS(SELECT 1 FROM logistics l WHERE l.order_id=o.id AND (l.mode=$tm OR (l.is_fcl=1 AND $tm='FCL') OR (l.is_fcl=0 AND $tm='LCL')))`); (params as any).$tm = transport }
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-    const rows = await queryAll(`
-      SELECT o.id as id, o.order_number as orderNo, o.enterprise as ent, o.category as cat,
-             (SELECT status FROM settlements s WHERE s.order_id=o.id LIMIT 1) as payStatus,
-             (SELECT status FROM customs_clearances c WHERE c.order_id=o.id LIMIT 1) as customsStatus,
-             (SELECT origin||' -> '||destination FROM logistics l WHERE l.order_id=o.id ORDER BY l.id DESC LIMIT 1) as route,
-             (SELECT status FROM logistics l WHERE l.order_id=o.id ORDER BY l.id DESC LIMIT 1) as logisticsStatus,
-             (SELECT substr(replace(ci.hs_code,'.',''),1,2) FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=o.id ORDER BY IFNULL(ci.amount,ci.qty*ci.unit_price) DESC LIMIT 1) as hsChap,
-             (SELECT substr(replace(ci.hs_code,'.',''),1,4) FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=o.id ORDER BY IFNULL(ci.amount,ci.qty*ci.unit_price) DESC LIMIT 1) as hsHead
-      FROM orders o
-      ${whereSql}
-      ORDER BY o.created_at DESC LIMIT $limit OFFSET $offset
-    `, params)
-    const t = rows.map(r => {
-      const tags = [] as string[]
-      if (r.customsStatus==='declared') tags.push('待报关')
-      if (r.customsStatus==='held') tags.push('异常阻断')
-      if (r.payStatus==='processing') tags.push('支付处理中')
-      if (r.payStatus==='pending') tags.push('待支付')
+    const offset = (page-1)*pageSize
+    let orders = await getOrdersPaged(q, 'all', offset, pageSize)
+    if (category !== 'all') orders = orders.filter((o:any)=> (o.category||'')===category)
+    const enrich = await Promise.all(orders.map(async (o:any)=>{
+      const [sett, cust, lg] = await Promise.all([
+        getSettlementByOrder(o.id),
+        getCustomsHeaderByOrder(o.id),
+        getLatestLogisticsByOrder(o.id)
+      ])
+      const payStatus = sett?.status || undefined
+      const customsStatus = cust?.status || undefined
+      const logisticsStatus = lg?.status || undefined
+      const route = lg ? `${lg.origin} -> ${lg.destination}` : ''
+      const tags: string[] = []
+      if (customsStatus==='declared') tags.push('已申报')
+      if (customsStatus==='held') tags.push('异常阻断')
+      if (payStatus==='processing') tags.push('支付处理中')
+      if (payStatus==='pending') tags.push('待支付')
       if (!tags.length) tags.push('处理中')
-      if (r.hsChap) tags.push(`HS章:${String(r.hsChap).padStart(2,'0')}`)
-      if (r.hsHead) tags.push(`HS品目:${String(r.hsHead).padStart(4,'0')}`)
-      return { id: r.orderNo, orderId: r.id, title: r.ent, route: r.route || '🇫🇷 -> 🇨🇳', tags, payStatus: r.payStatus, customsStatus: r.customsStatus, logisticsStatus: r.logisticsStatus, hsChap: r.hsChap, hsHead: r.hsHead }
-    })
-    setTasks(t)
-    const countRow = await queryAll(`SELECT COUNT(*) as c FROM orders o ${whereSql}`, params)
-    setTotal(countRow[0]?.c || 0)
-    const mrows = await queryAll(`
-      SELECT 
-        (SELECT COUNT(*) FROM orders WHERE status!='completed') as pending,
-        (SELECT IFNULL(SUM(o.amount),0) FROM orders o WHERE date(o.created_at)=date('now') AND EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id)) as customsAmount,
-        (SELECT COUNT(*) FROM customs_clearances WHERE status='held') as blocked
-    `)
-    setMetrics({ pending: mrows[0]?.pending || 0, customsAmount: Math.round(((mrows[0]?.customsAmount || 0)/1000)*10)/10, blocked: mrows[0]?.blocked || 0 })
+      return { id: o.orderNumber, orderId: o.id, title: o.enterprise, route, tags, payStatus, customsStatus, logisticsStatus }
+    }))
+    setTasks(enrich)
+    // 统计总数（考虑分类过滤）
+    let totalCnt = await countOrders(q, 'all')
+    if (category !== 'all') {
+      const allForCat = await getOrdersPaged(q, 'all', 0, 1000)
+      totalCnt = allForCat.filter((o:any)=> (o.category||'')===category).length
+    }
+    setTotal(totalCnt)
+    // KPI：待处理、报关金额（今日）、异常阻断
+    const totalOrders = await countOrders('', 'all')
+    const completedOrders = await countOrders('', 'completed')
+    const blocked = await countCustomsHeaders('', 'held', 'all', 'all')
+    const headersToday = await getCustomsHeadersPaged('', 'all', 'all', 'all', 0, 1000)
+    const todayStr = new Date().toISOString().slice(0,10)
+    const customsAmount = (headersToday||[]).filter((h:any)=> String(h.declareDate||'').startsWith(todayStr)).reduce((s:number,h:any)=> s + (h.totalValue||0), 0)
+    setMetrics({ pending: totalOrders - completedOrders, customsAmount: Math.round((customsAmount/1000)*10)/10, blocked })
     const pm = await getPaymentMethods()
     setMethods(pm.map((x:any)=>({ name:x.name, successRate:x.successRate, avgTime:x.avgTime })))
     const chs = await getHsChapters()
     setChapters(chs)
     setIncotermsList(await getIncotermsList() as any)
     setTransportList(await getTransportModes() as any)
-  }, [q, category, onlyAbnormal, hsChapter, incoterms, transport, page, pageSize])
+  }, [q, category, page, pageSize])
 
   useEffect(() => {
     const id = setTimeout(() => { void load() }, 0)

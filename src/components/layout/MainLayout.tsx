@@ -24,6 +24,8 @@ interface MainLayoutProps {
   children: React.ReactNode;
 }
 
+export const RoleContext = React.createContext<{ role: 'trade'|'customs'|'logistics'|'finance'|'warehouse'|'director'; setRole: (r: 'trade'|'customs'|'logistics'|'finance'|'warehouse'|'director') => void }>({ role: 'trade', setRole: ()=>{} })
+
 const menuItems = [
   { 
     icon: LayoutDashboard, 
@@ -97,6 +99,11 @@ const menuItems = [
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const [role, setRole] = useState<'trade'|'customs'|'logistics'|'finance'|'warehouse'|'director'>(()=> {
+    const saved = (localStorage.getItem('user_role') as any) || 'trade'
+    const allowed = new Set(['trade','customs','logistics','finance','warehouse','director'])
+    return allowed.has(saved) ? saved : 'trade'
+  })
 
   const systemStats = {
     onlineEnterprises: 1247,
@@ -116,8 +123,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     };
     apply();
   }, []);
+  useEffect(()=>{ try { localStorage.setItem('user_role', role) } catch(_){} }, [role])
 
   return (
+    <RoleContext.Provider value={{ role, setRole }}>
     <div className="min-h-screen bg-deep-space text-white">
       {/* 顶部状态栏 */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-700">
@@ -162,6 +171,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           </div>
 
           <div className="flex items-center space-x-3">
+            <select value={role} onChange={(e)=>{ const v = e.target.value as 'trade'|'customs'|'logistics'|'finance'|'warehouse'|'director'; setRole(v); setTimeout(()=>{ window.location.reload() }, 50) }} className="hidden md:block w-[180px] bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white">
+              <option value="trade">贸易跟单员</option>
+              <option value="customs">关务专员</option>
+              <option value="logistics">物流调度</option>
+              <option value="finance">财务专员</option>
+              <option value="warehouse">仓储主管</option>
+              <option value="director">供应链总监</option>
+            </select>
             <button className="p-2 rounded-lg hover:bg-slate-800 transition-colors relative">
               <Bell size={18} />
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-alert-red rounded-full"></span>
@@ -172,43 +189,56 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       </header>
 
       <div className="flex pt-16">
+        {(() => {
+          const allowPaths = {
+            trade: new Set(['/','/capabilities','/collaboration','/orders','/customs','/warehouse','/acceptance','/enterprises','/settings']),
+            customs: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/acceptance','/enterprises','/settings']),
+            logistics: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/warehouse','/acceptance','/enterprises','/settings']),
+            finance: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/payment','/warehouse','/acceptance','/enterprises','/settings']),
+            warehouse: new Set(['/','/capabilities','/collaboration','/logistics','/warehouse','/acceptance','/enterprises','/settings']),
+            director: new Set(menuItems.map(m=>m.path))
+          };
+          // expose visible for mapping below via window-scoped var to avoid TS annotations in JSX
+          (window as any).__visibleMenu__ = menuItems.filter(m => allowPaths[role].has(m.path));
+          return null;
+        })()}
         {/* 侧边栏 */}
         <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900/90 backdrop-blur-md border-r border-slate-700 transform transition-transform duration-300 ease-in-out pt-16 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <nav className="p-4 space-y-2">
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
-              
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center space-x-3 w-full p-3 rounded-lg transition-all duration-200 group relative ${
-                    isActive 
-                      ? 'bg-gradient-to-r from-cyber-cyan/20 to-neon-blue/20 border border-cyber-cyan/30 text-cyber-cyan' 
-                      : 'text-gray-300 hover:bg-slate-800 hover:text-white'
-                  }`}
-                >
-                  <Icon size={20} className={`${isActive ? 'text-cyber-cyan' : 'text-gray-400 group-hover:text-white'}`} />
-                  <div className="flex-1 text-left">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{item.label}</span>
-                      {item.badge && (
-                        <StatusBadge status="processing" pulse>
-                          {item.badge}
-                        </StatusBadge>
-                      )}
+            {((window as any).__visibleMenu__ || menuItems).map((item: any) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+                
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center space-x-3 w-full p-3 rounded-lg transition-all duration-200 group relative ${
+                      isActive 
+                        ? 'bg-gradient-to-r from-cyber-cyan/20 to-neon-blue/20 border border-cyber-cyan/30 text-cyber-cyan' 
+                        : 'text-gray-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <Icon size={20} className={`${isActive ? 'text-cyber-cyan' : 'text-gray-400 group-hover:text-white'}`} />
+                    <div className="flex-1 text-left">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{item.label}</span>
+                        {item.badge && (
+                          <StatusBadge status="processing" pulse>
+                            {item.badge}
+                          </StatusBadge>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">{item.description}</p>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">{item.description}</p>
-                  </div>
-                  
-                  {isActive && (
-                    <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
-                      <div className="w-1 h-6 bg-gradient-to-b from-cyber-cyan to-neon-blue rounded-full"></div>
-                    </div>
-                  )}
-                </Link>
+                    
+                    {isActive && (
+                      <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                        <div className="w-1 h-6 bg-gradient-to-b from-cyber-cyan to-neon-blue rounded-full"></div>
+                      </div>
+                    )}
+                  </Link>
               );
             })}
           </nav>
@@ -266,5 +296,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         </div>
       </footer>
     </div>
+    </RoleContext.Provider>
   );
 };
