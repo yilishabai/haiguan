@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -19,12 +19,11 @@ import {
 } from 'lucide-react';
 import { StatusBadge } from '../ui/HudPanel';
 import { getSettings } from '../../lib/sqlite';
+import { useAuth } from '../../hooks/useAuth';
 
 interface MainLayoutProps {
   children: React.ReactNode;
 }
-
-export const RoleContext = React.createContext<{ role: 'trade'|'customs'|'logistics'|'finance'|'warehouse'|'director'; setRole: (r: 'trade'|'customs'|'logistics'|'finance'|'warehouse'|'director') => void }>({ role: 'trade', setRole: ()=>{} })
 
 const menuItems = [
   { 
@@ -93,17 +92,31 @@ const menuItems = [
     label: '系统设置', 
     path: '/settings',
     description: '平台配置管理'
+  },
+  { 
+    icon: Users, 
+    label: '用户管理', 
+    path: '/users',
+    description: '用户与角色管理'
   }
 ];
+
+const roleMeta: Record<string, string> = {
+  trade: '贸易跟单员',
+  customs: '关务专员',
+  logistics: '物流调度',
+  finance: '财务专员',
+  warehouse: '仓储主管',
+  director: '供应链总监',
+  admin: '管理员',
+};
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
-  const [role, setRole] = useState<'trade'|'customs'|'logistics'|'finance'|'warehouse'|'director'>(()=> {
-    const saved = (localStorage.getItem('user_role') as any) || 'trade'
-    const allowed = new Set(['trade','customs','logistics','finance','warehouse','director'])
-    return allowed.has(saved) ? saved : 'trade'
-  })
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const { currentRole, availableRoles, switchRole, logout, isAuthenticated } = useAuth();
+  const role = currentRole?.id || 'trade';
 
   const systemStats = {
     onlineEnterprises: 1247,
@@ -123,10 +136,34 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     };
     apply();
   }, []);
-  useEffect(()=>{ try { localStorage.setItem('user_role', role) } catch(_){} }, [role])
+  useEffect(() => {
+    setProfileMenuOpen(false);
+  }, [location.pathname]);
+
+  const visibleMenu = useMemo(() => {
+    const allowPaths: Record<string, Set<string>> = {
+      trade: new Set(['/','/capabilities','/collaboration','/orders','/customs','/warehouse','/acceptance','/enterprises','/settings']),
+      customs: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/acceptance','/enterprises','/settings']),
+      logistics: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/warehouse','/acceptance','/enterprises','/settings']),
+      finance: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/payment','/warehouse','/acceptance','/enterprises','/settings']),
+      warehouse: new Set(['/','/capabilities','/collaboration','/logistics','/warehouse','/acceptance','/enterprises','/settings']),
+      director: new Set(menuItems.map((m) => m.path)),
+      admin: new Set(menuItems.map((m) => m.path)),
+    };
+    const paths = allowPaths[role] || allowPaths.trade;
+    return menuItems.filter((m) => paths.has(m.path));
+  }, [role]);
+
+  const handleSwitchRole = async (roleId: string) => {
+    try {
+      await switchRole(roleId);
+    } catch (err) {
+      console.error(err);
+      alert('切换角色失败，请重试');
+    }
+  };
 
   return (
-    <RoleContext.Provider value={{ role, setRole }}>
     <div className="min-h-screen bg-deep-space text-white">
       {/* 顶部状态栏 */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-700">
@@ -170,42 +207,55 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
-            <select value={role} onChange={(e)=>{ const v = e.target.value as 'trade'|'customs'|'logistics'|'finance'|'warehouse'|'director'; setRole(v); setTimeout(()=>{ window.location.reload() }, 50) }} className="hidden md:block w-[180px] bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white">
-              <option value="trade">贸易跟单员</option>
-              <option value="customs">关务专员</option>
-              <option value="logistics">物流调度</option>
-              <option value="finance">财务专员</option>
-              <option value="warehouse">仓储主管</option>
-              <option value="director">供应链总监</option>
-            </select>
+          <div className="flex items-center space-x-3 relative">
+            {isAuthenticated && (
+              <select
+                value={role}
+                onChange={(e) => handleSwitchRole(e.target.value)}
+                className="hidden md:block w-[200px] bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white"
+              >
+                {availableRoles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name || roleMeta[r.id] || r.id}
+                  </option>
+                ))}
+              </select>
+            )}
             <button className="p-2 rounded-lg hover:bg-slate-800 transition-colors relative">
               <Bell size={18} />
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-alert-red rounded-full"></span>
             </button>
-            <div className="w-8 h-8 bg-gradient-to-r from-cyber-cyan to-neon-blue rounded-full"></div>
+            <button
+              onClick={() => setProfileMenuOpen((v) => !v)}
+              className="w-9 h-9 bg-gradient-to-r from-cyber-cyan to-neon-blue rounded-full border border-slate-700 flex items-center justify-center text-sm font-semibold"
+            >
+              {currentRole?.name?.[0] || 'U'}
+            </button>
+            {profileMenuOpen && (
+              <div className="absolute right-0 top-12 w-48 bg-slate-900 border border-slate-800 rounded-lg shadow-lg overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-800">
+                  <div className="text-xs text-gray-400">当前角色</div>
+                  <div className="text-sm text-white font-semibold">
+                    {currentRole?.name || roleMeta[role] || '未登录'}
+                  </div>
+                </div>
+                <button
+                  onClick={logout}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-200 hover:bg-slate-800"
+                >
+                  退出登录
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
       <div className="flex pt-16">
-        {(() => {
-          const allowPaths = {
-            trade: new Set(['/','/capabilities','/collaboration','/orders','/customs','/warehouse','/acceptance','/enterprises','/settings']),
-            customs: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/acceptance','/enterprises','/settings']),
-            logistics: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/warehouse','/acceptance','/enterprises','/settings']),
-            finance: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/payment','/warehouse','/acceptance','/enterprises','/settings']),
-            warehouse: new Set(['/','/capabilities','/collaboration','/logistics','/warehouse','/acceptance','/enterprises','/settings']),
-            director: new Set(menuItems.map(m=>m.path))
-          };
-          // expose visible for mapping below via window-scoped var to avoid TS annotations in JSX
-          (window as any).__visibleMenu__ = menuItems.filter(m => allowPaths[role].has(m.path));
-          return null;
-        })()}
         {/* 侧边栏 */}
         <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900/90 backdrop-blur-md border-r border-slate-700 transform transition-transform duration-300 ease-in-out pt-16 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <nav className="p-4 space-y-2">
-            {((window as any).__visibleMenu__ || menuItems).map((item: any) => {
+            {(visibleMenu || menuItems).map((item: any) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.path;
                 
@@ -296,6 +346,5 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         </div>
       </footer>
     </div>
-    </RoleContext.Provider>
   );
 };

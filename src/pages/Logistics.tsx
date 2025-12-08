@@ -206,15 +206,10 @@ export const Logistics: React.FC = () => {
                   className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
                 >
                   <option value="">选择订单...</option>
-                  {linkableOrders.map((o:any) => (
-                    <option key={o.id} value={o.id} disabled={!o.eligible}>
-                      {o.order_number}（ID：{o.id}）{o.customs_status && o.customs_status!=='cleared' ? `｜${o.customs_status==='declared'?'已申报':o.customs_status==='inspecting'?'查验中':o.customs_status==='held'?'异常拦截':o.customs_status}` : ''}
-                    </option>
+                  {linkableOrders.map(o => (
+                    <option key={o.id} value={o.id}>{o.order_number}（ID：{o.id}）</option>
                   ))}
                 </select>
-                {linkableOrders.length===0 && (
-                  <div className="text-xs text-amber-300 mt-2">暂无可选订单。请前往报关管理将订单对应的报关单审批至“已放行/已清关”。供应链总监可在“已申报”状态使用“直接放行”。</div>
-                )}
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">运单号</label>

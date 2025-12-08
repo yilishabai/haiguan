@@ -1,10 +1,13 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { Dashboard } from './pages/Dashboard';
 import './styles/design-system.css';
 import { HudPanel, GlowButton } from './components/ui/HudPanel';
 import { getSettings, upsertSetting } from './lib/sqlite';
+import { Login } from './pages/Login';
+import { UserManagement } from './pages/UserManagement';
+import { AuthProvider, useAuth } from './hooks/useAuth';
 
 // Lazy load other modules
 const Capabilities = React.lazy(() => import('./pages/Capabilities').then(module => ({ default: module.Capabilities })));
@@ -17,61 +20,144 @@ const Payment = React.lazy(() => import('./pages/Payment').then(module => ({ def
 const Warehouse = React.lazy(() => import('./pages/Warehouse').then(module => ({ default: module.Warehouse })));
 const OrderManagement = React.lazy(() => import('./pages/OrderManagement').then(module => ({ default: module.OrderManagement })));
 
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+};
+
 function App() {
   return (
-    <Router>
-      <MainLayout>
+    <AuthProvider>
+      <Router>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/capabilities" element={
-            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-              <Capabilities />
-            </React.Suspense>
-          } />
-          <Route path="/orders" element={
-            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-              <OrderManagement />
-            </React.Suspense>
-          } />
-          <Route path="/collaboration" element={
-            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-              <Collaboration />
-            </React.Suspense>
-          } />
-          <Route path="/acceptance" element={
-            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-              <Acceptance />
-            </React.Suspense>
-          } />
-          <Route path="/enterprises" element={
-            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-              <Enterprises />
-            </React.Suspense>
-          } />
-          <Route path="/customs" element={
-            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-              <Customs />
-            </React.Suspense>
-          } />
-          <Route path="/logistics" element={
-            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-              <Logistics />
-            </React.Suspense>
-          } />
-          <Route path="/payment" element={
-            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-              <Payment />
-            </React.Suspense>
-          } />
-          <Route path="/warehouse" element={
-            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-              <Warehouse />
-            </React.Suspense>
-          } />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/*"
+            element={
+              <MainLayout>
+                <Routes>
+                  <Route
+                    path="/"
+                    element={
+                      <ProtectedRoute>
+                        <Dashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/capabilities"
+                    element={
+                      <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
+                        <ProtectedRoute>
+                          <Capabilities />
+                        </ProtectedRoute>
+                      </React.Suspense>
+                    }
+                  />
+                  <Route
+                    path="/orders"
+                    element={
+                      <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
+                        <ProtectedRoute>
+                          <OrderManagement />
+                        </ProtectedRoute>
+                      </React.Suspense>
+                    }
+                  />
+                  <Route
+                    path="/collaboration"
+                    element={
+                      <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
+                        <ProtectedRoute>
+                          <Collaboration />
+                        </ProtectedRoute>
+                      </React.Suspense>
+                    }
+                  />
+                  <Route
+                    path="/acceptance"
+                    element={
+                      <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
+                        <ProtectedRoute>
+                          <Acceptance />
+                        </ProtectedRoute>
+                      </React.Suspense>
+                    }
+                  />
+                  <Route
+                    path="/enterprises"
+                    element={
+                      <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
+                        <ProtectedRoute>
+                          <Enterprises />
+                        </ProtectedRoute>
+                      </React.Suspense>
+                    }
+                  />
+                  <Route
+                    path="/customs"
+                    element={
+                      <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
+                        <ProtectedRoute>
+                          <Customs />
+                        </ProtectedRoute>
+                      </React.Suspense>
+                    }
+                  />
+                  <Route
+                    path="/logistics"
+                    element={
+                      <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
+                        <ProtectedRoute>
+                          <Logistics />
+                        </ProtectedRoute>
+                      </React.Suspense>
+                    }
+                  />
+                  <Route
+                    path="/payment"
+                    element={
+                      <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
+                        <ProtectedRoute>
+                          <Payment />
+                        </ProtectedRoute>
+                      </React.Suspense>
+                    }
+                  />
+                  <Route
+                    path="/warehouse"
+                    element={
+                      <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
+                        <ProtectedRoute>
+                          <Warehouse />
+                        </ProtectedRoute>
+                      </React.Suspense>
+                    }
+                  />
+                  <Route
+                    path="/users"
+                    element={
+                      <ProtectedRoute>
+                        <UserManagement />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/settings"
+                    element={
+                      <ProtectedRoute>
+                        <Settings />
+                      </ProtectedRoute>
+                    }
+                  />
+                </Routes>
+              </MainLayout>
+            }
+          />
         </Routes>
-      </MainLayout>
-    </Router>
+      </Router>
+    </AuthProvider>
   );
 }
 

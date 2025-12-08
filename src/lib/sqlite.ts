@@ -2088,26 +2088,8 @@ export async function getLinkableOrders(type: 'customs'|'logistics'|'settlement'
       ORDER BY o.created_at DESC`)
   }
   if (type === 'logistics') {
-    return queryAll(`
-      SELECT 
-        o.id, 
-        o.order_number,
-        (
-          SELECT ch.status 
-          FROM customs_headers ch 
-          WHERE ch.order_id = o.id 
-          ORDER BY ch.declare_date DESC, ch.updated_at DESC 
-          LIMIT 1
-        ) AS customs_status,
-        CASE WHEN EXISTS(
-          SELECT 1 FROM customs_headers ch 
-          WHERE ch.order_id=o.id AND ch.status IN ('cleared','released')
-        ) THEN 1 ELSE 0 END AS eligible
-      FROM orders o 
-      WHERE EXISTS(
-        SELECT 1 FROM customs_headers ch2 
-        WHERE ch2.order_id=o.id AND ch2.status IN ('cleared','released','declared','inspecting','held')
-      )
+    return queryAll(`SELECT o.id, o.order_number FROM orders o 
+      WHERE EXISTS(SELECT 1 FROM customs_headers ch WHERE ch.order_id=o.id AND ch.status IN ('cleared','released'))
         AND NOT EXISTS(SELECT 1 FROM logistics lg WHERE lg.order_id IS NOT NULL AND lg.order_id!='' AND lg.order_id=o.id)
       ORDER BY o.created_at DESC`)
   }
