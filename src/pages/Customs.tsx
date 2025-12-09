@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
-import { getCustomsHeadersPaged, countCustomsHeaders, getCustomsItems, upsertCustomsHeader, insertCustomsItem, computeTaxes, ensureCustomsTables, getHsChapters, getHsHeadings, getHsSubheadings, getPorts, getLinkableOrders, queryAll, enqueueJob, applyBusinessModel } from '../lib/sqlite'
+import { getCustomsHeadersPaged, countCustomsHeaders, getCustomsItems, upsertCustomsHeader, insertCustomsItem, computeTaxes, computeLandedCost, getKpiImprovements, getAlgorithmRecommendations, ensureCustomsTables, getHsChapters, getHsHeadings, getHsSubheadings, getPorts, getLinkableOrders, queryAll, applyBusinessModel } from '../lib/sqlite'
 import * as XLSX from 'xlsx'
 
 export const Customs: React.FC = () => {
-  const { currentRole } = useAuth()
+  const { hasPermission } = useAuth()
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [editedHeader, setEditedHeader] = useState<any>({})
   const [q, setQ] = useState('')
@@ -31,6 +31,10 @@ export const Customs: React.FC = () => {
   const [selected, setSelected] = useState<any | null>(null)
   const [items, setItems] = useState<any[]>([])
   const [heldTips, setHeldTips] = useState<string[]>([])
+  const [landed, setLanded] = useState<any | null>(null)
+  const [algoRec, setAlgoRec] = useState<any | null>(null)
+  const [kpi, setKpi] = useState<any | null>(null)
+  const [risk, setRisk] = useState<{ compliance: number; messages: string[] }>({ compliance: 0, messages: [] })
   const [loading, setLoading] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [showModal, setShowModal] = useState(false)
@@ -96,6 +100,25 @@ export const Customs: React.FC = () => {
       if (o && String(o.enterprise||'') !== String(selected.enterprise||'')) tips.push('申报单位与订单企业不一致，建议核对一致性')
       if (tips.length === 0 && selected.status === 'held') tips.push('建议核查监管条件匹配情况（如3C、动植检、强制标准）')
       setHeldTips(tips)
+    }
+    const id = setTimeout(() => { void run() }, 0)
+    return () => clearTimeout(id)
+  }, [selected, items])
+
+  useEffect(() => {
+    const run = async () => {
+      if (!selected) { setLanded(null); setAlgoRec(null); setKpi(null); setRisk({ compliance: 0, messages: [] }); return }
+      const [h] = await queryAll(`SELECT order_id as orderId FROM customs_headers WHERE id=$id`, { $id: selected.id })
+      const oid = h?.orderId || selected.orderId
+      if (!oid) { setLanded(null); setAlgoRec(null); setKpi(null); setRisk({ compliance: 0, messages: [] }); return }
+      const lc = await computeLandedCost(oid)
+      const rec = await getAlgorithmRecommendations(oid)
+      const k = await getKpiImprovements()
+      const r = await applyBusinessModel(oid)
+      setLanded(lc)
+      setAlgoRec(rec)
+      setKpi(k)
+      setRisk({ compliance: r.compliance || 0, messages: r.messages || [] })
     }
     const id = setTimeout(() => { void run() }, 0)
     return () => clearTimeout(id)
@@ -253,15 +276,39 @@ export const Customs: React.FC = () => {
       const qtyRaw = unitPrice>0 ? share / unitPrice : 1
       const qty = Math.max(1, Math.round(qtyRaw * 100) / 100)
       const tax = computeTaxes(hs, share * fx(currency))
-      items.push({ id: `${headerId}_${i+1}`, headerId, lineNo: i+1, hsCode: hs, name, spec: 'Standard', unit, qty, unitPrice, amount: share, originCountry: 'CN', taxRate: (Math.round((tax.tariffRate+tax.vatRate+tax.exciseRate)*1000)/1000), tariff: tax.tariff, excise: tax.excise, vat: tax.vat })
+      const item = { id: `${headerId}_${i+1}`, headerId, lineNo: i+1, hsCode: hs, name, spec: 'Standard', unit, qty, unitPrice, amount: share, originCountry: 'CN', taxRate: (Math.round((tax.tariffRate+tax.vatRate+tax.exciseRate)*1000)/1000), tariff: tax.tariff, excise: tax.excise, vat: tax.vat }
+      items.push(item)
+      await insertCustomsItem(item)
     }
-    await enqueueJob('customs_declare', { header, items })
+    await upsertCustomsHeader(header)
     setShowModal(false)
     setTimeout(() => { load() }, 800)
   }
 
   const updateCustomsStatus = async (id: string, next: string) => {
-    await enqueueJob('customs_progress', { header_id: id, next_status: next })
+    const [h] = await queryAll(`SELECT * FROM customs_headers WHERE id=$id`, { $id: id })
+    if (h) {
+      const header = {
+        id: h.id,
+        declarationNo: h.declaration_no,
+        enterprise: h.enterprise,
+        consignor: h.consignor,
+        consignee: h.consignee,
+        portCode: h.port_code,
+        tradeMode: h.trade_mode,
+        currency: h.currency,
+        totalValue: h.total_value,
+        grossWeight: h.gross_weight,
+        netWeight: h.net_weight,
+        packages: h.packages,
+        countryOrigin: h.country_origin,
+        countryDest: h.country_dest,
+        status: next,
+        declareDate: h.declare_date,
+        orderId: h.order_id
+      }
+      await upsertCustomsHeader(header)
+    }
     setTimeout(() => { load() }, 800)
   }
 
@@ -292,9 +339,13 @@ export const Customs: React.FC = () => {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-white">报关管理</h1>
         <div className="flex items-center gap-2">
-          {currentRole === 'customs' && (<GlowButton onClick={handleCreate}>+ 新增申报</GlowButton>)}
-          {currentRole === 'customs' && (<input type="file" accept=".xlsx,.xls" onChange={(e)=>setFile(e.target.files?.[0]||null)} className="text-white" />)}
-          {currentRole === 'customs' && (<GlowButton onClick={parseExcel}>导入</GlowButton>)}
+          {hasPermission('customs:write') && (
+            <>
+              <GlowButton onClick={handleCreate}>+ 新增申报</GlowButton>
+              <input type="file" accept=".xlsx,.xls" onChange={(e)=>setFile(e.target.files?.[0]||null)} className="text-white" />
+              <GlowButton onClick={parseExcel}>导入</GlowButton>
+            </>
+          )}
           <GlowButton onClick={()=>{ void load() }}>🔄 刷新列表</GlowButton>
         </div>
       </div>
@@ -412,26 +463,26 @@ export const Customs: React.FC = () => {
                       XLSX.utils.book_append_sheet(wb, ws, 'CustomsItems')
                       XLSX.writeFile(wb, `${selected.declarationNo || 'customs'}.xlsx`)
                     }}>导出Excel</GlowButton>
-                    {selected && (currentRole === 'customs') && ((selected.status||'') === 'draft' || !(selected.status||'')) && (
+                    {selected && hasPermission('customs:write') && ((selected.status||'') === 'draft' || !(selected.status||'')) && (
                       <GlowButton size="sm" className="ml-2 bg-green-600" onClick={()=>handleAction('submit', selected.id)}>提交申报</GlowButton>
                     )}
-                    {selected && (currentRole === 'director') && (selected.status === 'declared') && (
+                    {selected && hasPermission('customs:approve') && (selected.status === 'declared') && (
                       <>
                         <GlowButton size="sm" className="ml-2 bg-green-600" onClick={()=>handleAction('pass', selected.id)}>直接放行</GlowButton>
                         <GlowButton size="sm" className="ml-2" onClick={()=>handleAction('inspect', selected.id)}>布控查验</GlowButton>
                         <GlowButton size="sm" className="ml-2 bg-red-600" onClick={()=>handleAction('reject', selected.id)}>拦截退单</GlowButton>
                       </>
                     )}
-                    {selected && (currentRole === 'director') && (selected.status === 'inspecting') && (
+                    {selected && hasPermission('customs:approve') && (selected.status === 'inspecting') && (
                       <GlowButton size="sm" className="ml-2 bg-green-600" onClick={()=>handleAction('pass', selected.id)}>查验无误放行</GlowButton>
                     )}
-                    {selected && (currentRole === 'customs') && (selected.status === 'held') && (
+                    {selected && hasPermission('customs:write') && (selected.status === 'held') && (
                       <>
                         <GlowButton size="sm" className="ml-2" onClick={()=>{ setEditedHeader({ enterprise: selected.enterprise, consignor: selected.consignor, consignee: selected.consignee, portCode: selected.portCode, tradeMode: selected.tradeMode }); setEditModalVisible(true) }}>修正数据</GlowButton>
                         <GlowButton size="sm" className="ml-2 bg-amber-600" onClick={()=>handleAction('re_declare', selected.id)}>重新申报</GlowButton>
                       </>
                     )}
-                    {selected && (currentRole === 'director') && (selected.status === 'held') && (
+                    {selected && hasPermission('customs:approve') && (selected.status === 'held') && (
                       <GlowButton size="sm" className="ml-2 bg-amber-600" onClick={()=>handleAction('pass', selected.id)}>审批放行</GlowButton>
                     )}
                   </div>
@@ -443,7 +494,7 @@ export const Customs: React.FC = () => {
                   {items.length===0 && (
                     <div className="px-2 py-2 rounded bg-slate-800/50 border border-slate-700 text-gray-300 flex items-center justify-between">
                       <span>当前申报单暂无明细。系统将按 SKU 归并生成报关项（例如将同 HS 编码的 SKU 合并为 1 项），HS 编码由历史申报专家库或 AI 归类算法推荐，需人工确认。</span>
-                      {currentRole === 'customs' && (
+                      {hasPermission('customs:write') && (
                       <GlowButton size="sm" onClick={async()=>{
                         if (!selected?.id) return
                         const [h] = await queryAll(`SELECT order_id as orderId, currency FROM customs_headers WHERE id=$id`, { $id: selected.id })
@@ -491,6 +542,52 @@ export const Customs: React.FC = () => {
                     </div>
                   ))}
                 </div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="hud-panel p-3">
+                  <div className="text-sm text-gray-400">合规评分</div>
+                  <div className="text-white text-xl">{Math.round((risk.compliance||0)*10)/10}%</div>
+                  {risk.messages?.length>0 && (
+                    <div className="mt-2 text-xs text-amber-400">{risk.messages.slice(0,3).map((m,i)=>(<div key={i}>⚠️ {m}</div>))}</div>
+                  )}
+                </div>
+                <div className="hud-panel p-3">
+                  <div className="text-sm text-gray-400">到岸成本</div>
+                  {landed ? (
+                    <div className="text-xs text-gray-300 space-y-1">
+                      <div>产品 {Number(landed.product||0).toFixed(2)} CNY</div>
+                      <div>运费 {Number(landed.freight||0).toFixed(2)} ・ 保险 {Number(landed.insurance||0).toFixed(2)}</div>
+                      <div>关税 {Number(landed.tariff||0).toFixed(2)} ・ 增值税 {Number(landed.vat||0).toFixed(2)} ・ 消费税 {Number(landed.excise||0).toFixed(2)}</div>
+                      <div className="text-white">合计 {Number(landed.total||0).toFixed(2)} CNY</div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500">等待计算</div>
+                  )}
+                </div>
+                <div className="hud-panel p-3">
+                  <div className="text-sm text-gray-400">业务建议</div>
+                  {algoRec ? (
+                    <div className="text-xs text-gray-300 space-y-1">
+                      <div>结算：{algoRec.payment.bestMethod}，成功率 {Math.round((algoRec.payment.successRate||0)*10)/10}%，耗时 {algoRec.payment.etaHours}h</div>
+                      <div>库存：{algoRec.inventory.action==='reallocate'?'建议调拨':'稳定'}，数量 {algoRec.inventory.quantity}</div>
+                      <div>流程：下一步 {algoRec.processControl.nextLogisticsStep}</div>
+                      <div className="text-white">摘要：{algoRec.decision.summary}</div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500">等待计算</div>
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 hud-panel p-3">
+                <div className="text-sm text-gray-400">算法指标</div>
+                {kpi ? (
+                  <div className="text-xs text-gray-300 flex items-center gap-6">
+                    <div>协同准确率 {Number(kpi.acc||0).toFixed(1)}%（基线 {Number(kpi.base?.accuracy||0).toFixed(1)}%，提升 {Number(kpi.accImp||0).toFixed(1)}%）</div>
+                    <div>物流效率 {Number(kpi.ef||0).toFixed(1)}%（基线 {Number(kpi.base?.efficiency||0).toFixed(1)}%，提升 {Number(kpi.efImp||0).toFixed(1)}%）</div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-gray-500">等待计算</div>
+                )}
               </div>
             </HudPanel>
           ) : (

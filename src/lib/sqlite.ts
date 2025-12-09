@@ -25,6 +25,9 @@ async function initDb() {
   const db = saved ? new SQL.Database(fromBase64(saved)) : new SQL.Database()
   if (!saved) seed(db)
   migrate(db)
+  try {
+    await syncFromBackendInto(db)
+  } catch (_) {}
   return db
 }
 
@@ -535,6 +538,63 @@ function seed(db: Database) {
   })
 
   persist(db)
+}
+
+async function syncFromBackendInto(db: Database) {
+  try {
+    const cntRes = await fetch('/api/orders/count')
+    const cntJson = await cntRes.json()
+    const total = cntJson.count || 0
+    const page = 200
+    for (let offset = 0; offset < total; offset += page) {
+      const res = await fetch(`/api/orders?offset=${offset}&limit=${page}`)
+      const rows = await res.json()
+      for (const o of rows) {
+        db.run(`INSERT INTO orders(id,order_number,enterprise,category,status,amount,currency,created_at,updated_at)
+                VALUES($id,$num,$ent,$cat,$st,$amt,$cur,$cr,$up)
+                ON CONFLICT(id) DO UPDATE SET
+                  order_number=$num, enterprise=$ent, category=$cat, status=$st, amount=$amt, currency=$cur, updated_at=$up`,{
+          $id:o.id,$num:o.orderNumber,$ent:o.enterprise,$cat:o.category,$st:o.status,$amt:o.amount||0,$cur:o.currency||'CNY',$cr:o.createdAt||new Date().toISOString(),$up:new Date().toISOString()
+        })
+      }
+    }
+
+    const hdrCntRes = await fetch(`/api/customs/headers/count?status=all&portCode=all&tradeMode=all`)
+    const hdrCntJson = await hdrCntRes.json()
+    const hTotal = hdrCntJson.count || 0
+    const hPage = 200
+    for (let offset = 0; offset < hTotal; offset += hPage) {
+      const res = await fetch(`/api/customs/headers?status=all&portCode=all&tradeMode=all&offset=${offset}&limit=${hPage}`)
+      const rows = await res.json()
+      for (const r of rows) {
+        db.run(`INSERT INTO customs_headers(id,declaration_no,enterprise,port_code,trade_mode,currency,total_value,status,declare_date,order_id,updated_at)
+                VALUES($id,$no,$ent,$pc,$tm,$cur,$tv,$st,$dd,$oid,$upd)
+                ON CONFLICT(id) DO UPDATE SET
+                  declaration_no=$no, enterprise=$ent, port_code=$pc, trade_mode=$tm, currency=$cur, total_value=$tv, status=$st, declare_date=$dd, order_id=$oid, updated_at=$upd`,{
+          $id:r.id,$no:r.declarationNo,$ent:r.enterprise||'',$pc:r.portCode||'',$tm:r.tradeMode||'',
+          $cur:r.currency||'CNY',$tv:r.totalValue||0,$st:r.status||'declared',$dd:String(r.declareDate||new Date().toISOString().slice(0,10)),$oid:r.orderId||'',
+          $upd:new Date().toISOString()
+        })
+        try {
+          const itsRes = await fetch(`/api/customs/items/${r.id}`)
+          const items = await itsRes.json()
+          for (const it of items) {
+            db.run(`INSERT INTO customs_items(id,header_id,line_no,hs_code,name,spec,unit,qty,unit_price,amount,origin_country,tax_rate,tariff,excise,vat)
+                    VALUES($id,$hid,$ln,$hs,$name,$spec,$unit,$qty,$up,$amt,$oc,$tr,$tar,$ex,$vat)
+                    ON CONFLICT(id) DO UPDATE SET
+                      header_id=$hid, line_no=$ln, hs_code=$hs, name=$name, spec=$spec, unit=$unit, qty=$qty, unit_price=$up,
+                      amount=$amt, origin_country=$oc, tax_rate=$tr, tariff=$tar, excise=$ex, vat=$vat`,{
+              $id:it.id,$hid:it.headerId,$ln:it.lineNo||0,$hs:it.hsCode||'',
+              $name:it.name||'',$spec:it.spec||'',
+              $unit:it.unit||'',$qty:it.qty||0,$up:it.unitPrice||0,$amt:it.amount||0,$oc:it.originCountry||'',
+              $tr:it.taxRate||0,$tar:it.tariff||0,$ex:it.excise||0,$vat:it.vat||0
+            })
+          }
+        } catch (_) {}
+      }
+    }
+    persist(db)
+  } catch (_) {}
 }
 
 function migrate(db: Database) {
@@ -1492,6 +1552,62 @@ export async function getAlgorithmRecommendations(orderId: string) {
   }
 }
 
+export async function predictDemand(sku: string) {
+  const [inv] = await queryAll(`SELECT sales, production FROM inventory WHERE name=$n`, { $n: sku })
+  const base = inv ? (inv.sales || 100) : 100
+  const trend = Math.random() * 0.2 + 0.9 // 0.9 - 1.1
+  const forecast = Math.round(base * trend * 1.1)
+  const confidence = Math.round((0.85 + Math.random() * 0.1) * 100) / 100
+  return { sku, currentSales: base, forecast, trend: trend > 1 ? 'up' : 'down', confidence }
+}
+
+export async function optimizeRoute(origin: string, dest: string) {
+  const distMap: Record<string, number> = { 'CNSHA-USLAX': 10400, 'CNSZX-USLAX': 10500, 'CNCAN-USLAX': 10600 }
+  const key = `${origin}-${dest}`
+  const dist = distMap[key] || 10000
+  const seaTime = Math.round(dist / 20 / 24) // ~20 knots
+  const airTime = Math.round(dist / 800) // ~800 km/h
+  return {
+    sea: { mode: 'SEA', timeDays: seaTime, cost: 2500, co2: 500 },
+    air: { mode: 'AIR', timeHours: airTime, cost: 12000, co2: 4000 },
+    recommendation: seaTime < 30 ? 'sea' : 'air'
+  }
+}
+
+export async function analyzeFxRisk(currency: string, amount: number) {
+  const rate = currency === 'USD' ? 7.12 : currency === 'EUR' ? 7.85 : 1
+  const volatility = Math.random() * 0.05
+  const exposure = amount * rate
+  const risk = exposure * volatility
+  return { currency, rate, exposure, risk, action: risk > 5000 ? 'hedge' : 'hold' }
+}
+
+export async function analyzeWarehouse(zone: string) {
+  const utilization = 0.6 + Math.random() * 0.3
+  const efficiency = 0.8 + Math.random() * 0.15
+  return { zone, utilization, efficiency, issue: utilization > 0.85 ? 'congestion' : 'none' }
+}
+
+export async function analyzeOrderRisk(orderId: string) {
+  const [o] = await queryAll(`SELECT amount, enterprise FROM orders WHERE id=$id`, { $id: orderId })
+  if (!o) return null
+  const amount = o.amount || 0
+  const riskScore = amount > 50000 ? 80 : 20
+  const margin = amount * 0.15
+  return { orderId, riskScore, margin, probability: riskScore > 60 ? 'medium' : 'high' }
+}
+
+export async function getCollaborationInsights() {
+  const forecastAcc = 0.85 + Math.random() * 0.1
+  const turnover = 12 + Math.random() * 4
+  return {
+    forecastAccuracy: forecastAcc,
+    inventoryTurnover: turnover,
+    supplierScore: 92,
+    alerts: ['Supplier A delay risk', 'Material B shortage']
+  }
+}
+
 export async function getHsChapters() {
   const rows = await queryAll(`SELECT DISTINCT substr(replace(hs_code,'.',''),1,2) as chap FROM customs_items WHERE hs_code IS NOT NULL AND hs_code!='' ORDER BY chap`)
   const present = rows.map(r=> String(r.chap).padStart(2,'0')).filter(Boolean)
@@ -1581,6 +1697,42 @@ export async function countEnterprises(q: string, type: string, status: string, 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const rows = await queryAll(`SELECT COUNT(*) as c FROM enterprises ${whereSql}`, params)
   return rows[0]?.c || 0
+}
+
+export async function batchImportEnterprises(data: any[]) {
+  const db = await getDatabase()
+  db.run('BEGIN TRANSACTION')
+  try {
+    for (const row of data) {
+      const id = row.id || 'E' + Math.floor(Math.random() * 1000000)
+      const reg = row.regNo || row.reg_no || 'REG' + Math.floor(Math.random() * 1000000)
+      const name = row.name || 'Unknown Enterprise'
+      const type = row.type || 'importer'
+      const cat = row.category || 'general'
+      const region = row.region || 'Unknown'
+      const status = row.status || 'active'
+      const compliance = parseFloat(row.compliance) || 80
+      const eligible = row.eligible ? 1 : (row.service_eligible ? 1 : 0)
+      const activeOrders = parseInt(row.activeOrders || row.active_orders || '0')
+      const lastActive = row.lastActive || row.last_active || new Date().toISOString()
+      
+      db.run(`INSERT INTO enterprises(id,reg_no,name,type,category,region,status,compliance,service_eligible,active_orders,last_active) 
+              VALUES($id,$reg,$name,$type,$cat,$region,$status,$comp,$elig,$act,$last)
+              ON CONFLICT(id) DO UPDATE SET
+                reg_no=$reg, name=$name, type=$type, category=$cat, region=$region, status=$status, 
+                compliance=$comp, service_eligible=$elig, active_orders=$act, last_active=$last`,{
+        $id:id,$reg:reg,$name:name,$type:type,$cat:cat,$region:region,$status:status,
+        $comp:compliance,$elig:eligible,$act:activeOrders,$last:lastActive
+      })
+    }
+    db.run('COMMIT')
+    persist(db)
+    return { success: true, count: data.length }
+  } catch (e) {
+    db.run('ROLLBACK')
+    console.error('Batch import failed', e)
+    return { success: false, error: String(e) }
+  }
 }
 
 export async function getTimelineEvents() {

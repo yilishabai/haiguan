@@ -95,6 +95,13 @@ def upsert_header(data: CustomsHeaderIn, db: Session = Depends(get_db)):
         r.status = data.status
         r.order_id = data.order_id
     else:
+        declare_date = None
+        try:
+            if data.declare_date:
+                from datetime import datetime
+                declare_date = datetime.strptime(str(data.declare_date), '%Y-%m-%d').date()
+        except Exception:
+            declare_date = None
         r = CustomsHeader(
             id=data.id,
             declaration_no=data.declaration_no,
@@ -106,7 +113,7 @@ def upsert_header(data: CustomsHeaderIn, db: Session = Depends(get_db)):
             currency=data.currency,
             total_value=data.total_value,
             status=data.status,
-            declare_date=data.declare_date,
+            declare_date=declare_date,
             order_id=data.order_id
         )
         db.add(r)

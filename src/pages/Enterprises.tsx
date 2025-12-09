@@ -1,8 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
-import { getEnterprisesPaged, countEnterprises } from '../lib/sqlite'
+import { getEnterprisesPaged, countEnterprises, batchImportEnterprises } from '../lib/sqlite'
+import * as XLSX from 'xlsx'
+import { useAuth } from '../hooks/useAuth'
 
 export const Enterprises: React.FC = () => {
+  const { hasPermission } = useAuth()
   const [q, setQ] = useState('')
   const [type, setType] = useState('all')
   const [status, setStatus] = useState('all')
@@ -13,6 +16,7 @@ export const Enterprises: React.FC = () => {
   const [rows, setRows] = useState<any[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fetch = useCallback(async () => {
     setLoading(true)
@@ -28,11 +32,70 @@ export const Enterprises: React.FC = () => {
 
   const totalPages = useMemo(()=> Math.max(1, Math.ceil(total / pageSize)), [total, pageSize])
 
+  const handleImportClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result
+        const wb = XLSX.read(bstr, { type: 'binary' })
+        const wsname = wb.SheetNames[0]
+        const ws = wb.Sheets[wsname]
+        const data = XLSX.utils.sheet_to_json(ws)
+        
+        if (data && data.length > 0) {
+            // Map keys if needed, for now assume keys match or are mapped in sqlite
+            // We expect column headers like: id, regNo, name, type, category, region, status, compliance...
+            const res = await batchImportEnterprises(data)
+            if (res.success) {
+                alert(`成功导入 ${res.count} 条企业数据`)
+                void fetch()
+            } else {
+                alert('导入失败: ' + res.error)
+            }
+        } else {
+            alert('Excel文件中没有数据')
+        }
+      } catch (err) {
+        console.error(err)
+        alert('文件解析失败')
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      }
+    }
+    reader.readAsBinaryString(file)
+  }
+
+  const downloadTemplate = () => {
+    const headers = [
+      { id: 'E99999', regNo: 'REG99999', name: '示例企业名称', type: 'importer', category: 'beauty', region: '上海', status: 'active', compliance: 90, service_eligible: 1, active_orders: 50, last_active: '2025-01-01' }
+    ]
+    const ws = XLSX.utils.json_to_sheet(headers)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Template")
+    XLSX.writeFile(wb, "enterprises_template.xlsx")
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-white">参与企业</h1>
-        <div className="text-gray-400">共 {total.toLocaleString()} 家企业</div>
+        <div className="flex items-center gap-4">
+            <div className="text-gray-400">共 {total.toLocaleString()} 家企业</div>
+            {hasPermission('enterprises:write') && (
+              <>
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx,.xls" className="hidden" />
+                <GlowButton onClick={downloadTemplate}>下载模板</GlowButton>
+                <GlowButton onClick={handleImportClick}>Excel导入</GlowButton>
+              </>
+            )}
+        </div>
       </div>
 
       <HudPanel title="查询条件">

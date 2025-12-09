@@ -18,17 +18,56 @@ def seed_users():
                     permissions=json.dumps(perms),
                 )
                 session.add(role)
+            else:
+                # Update permissions if role exists
+                role.permissions = json.dumps(perms)
+                role.name = name
+                role.description = description
             return role
 
         admin_role = ensure_role('admin', '管理员', '系统管理员，拥有所有权限', ['*'])
-        trade_role = ensure_role('trade', '贸易跟单员', '负责订单跟单', ['orders:read', 'orders:write'])
-        customs_role = ensure_role('customs', '关务专员', '负责关务申报', ['customs:read', 'customs:write'])
-        logistics_role = ensure_role('logistics', '物流调度', '负责物流调度与跟踪', ['logistics:read', 'logistics:write'])
-        finance_role = ensure_role('finance', '财务专员', '负责结算与支付', ['settlements:read', 'payment:write'])
-        warehouse_role = ensure_role('warehouse', '仓储主管', '负责仓储与库存管理', ['warehouse:read', 'warehouse:write'])
+        
+        trade_role = ensure_role('trade', '贸易跟单员', '负责订单跟单', [
+            'dashboard:read', 'orders:read', 'orders:write', 
+            'enterprises:read', 'enterprises:write', 
+            'collaboration:read', 'capabilities:read',
+            'customs:read'
+        ])
+        
+        customs_role = ensure_role('customs', '关务专员', '负责关务申报', [
+            'dashboard:read', 'customs:read', 'customs:write', 
+            'acceptance:read', 'enterprises:read'
+        ])
+        
+        logistics_role = ensure_role('logistics', '物流调度', '负责物流调度与跟踪', [
+            'dashboard:read', 'logistics:read', 'logistics:write', 
+            'warehouse:read', 'customs:read'
+        ])
+        
+        finance_role = ensure_role('finance', '财务专员', '负责结算与支付', [
+            'dashboard:read', 'payment:read', 'payment:write', 'settlements:read',
+            'customs:read'
+        ])
+        
+        warehouse_role = ensure_role('warehouse', '仓储主管', '负责仓储与库存管理', [
+            'dashboard:read', 'warehouse:read', 'warehouse:write', 
+            'logistics:read'
+        ])
+        
         director_role = ensure_role('director', '供应链总监', '全局视角管理供应链', ['*'])
-        ensure_role('operator', '操作员', '基础操作权限', ['orders:read', 'orders:write', 'customs:read', 'logistics:read'])
-        ensure_role('auditor', '审计员', '只读审计权限', ['orders:read', 'customs:read', 'logistics:read', 'settlements:read', 'audit:read'])
+        
+        ensure_role('operator', '操作员', '基础操作权限', [
+            'dashboard:read', 'orders:read', 'customs:read', 'logistics:read', 
+            'warehouse:read', 'enterprises:read', 'capabilities:read', 
+            'collaboration:read', 'acceptance:read', 'payment:read'
+        ])
+        
+        ensure_role('auditor', '审计员', '只读审计权限', [
+            'dashboard:read', 'orders:read', 'customs:read', 'logistics:read', 
+            'warehouse:read', 'enterprises:read', 'capabilities:read', 
+            'collaboration:read', 'acceptance:read', 'payment:read', 
+            'audit:read', 'users:read', 'settings:read'
+        ])
 
         session.commit()
 
@@ -56,7 +95,7 @@ def seed_users():
                 is_active=True,
             )
             demo_user.set_password('demo')
-            demo_user.roles = [trade_role, logistics_role, finance_role]
+            demo_user.roles = [trade_role, logistics_role, finance_role, customs_role]
             session.add(demo_user)
             session.commit()
     finally:

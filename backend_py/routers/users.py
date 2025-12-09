@@ -15,7 +15,7 @@ from backend_py.schemas.users import (
 )
 from backend_py.routers.auth import get_current_user
 
-ROLES_FIXED = True
+ROLES_FIXED = False
 
 router = APIRouter(prefix='/api/users')
 
@@ -75,6 +75,101 @@ def count_users(q: str = '', db: Session = Depends(get_db), user_role=Depends(ge
             | (User.email.like(f'%{q}%'))
         )
     return {'count': query.count()}
+
+
+@router.get('/roles', response_model=List[RoleOut])
+def list_roles(db: Session = Depends(get_db), user_role=Depends(get_current_user)):
+    roles = db.query(Role).all()
+    return [
+        RoleOut(
+            id=r.id,
+            name=r.name,
+            description=r.description,
+            permissions=r.permissions,
+            created_at=r.created_at.isoformat(),
+            updated_at=r.updated_at.isoformat(),
+        )
+        for r in roles
+    ]
+
+
+@router.post('/roles', response_model=RoleOut)
+def create_role(data: RoleCreate, db: Session = Depends(get_db), user_role=Depends(get_current_user)):
+    _, role = user_role
+    if role.id != 'admin':
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only administrators can create roles")
+    if ROLES_FIXED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="角色为固定配置，禁止新增")
+    if db.query(Role).filter(Role.id == data.id).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role ID already exists")
+
+    new_role = Role(
+        id=data.id,
+        name=data.name,
+        description=data.description,
+        permissions=data.permissions,
+    )
+    db.add(new_role)
+    db.commit()
+    db.refresh(new_role)
+    return RoleOut(
+        id=new_role.id,
+        name=new_role.name,
+        description=new_role.description,
+        permissions=new_role.permissions,
+        created_at=new_role.created_at.isoformat(),
+        updated_at=new_role.updated_at.isoformat(),
+    )
+
+
+@router.put('/roles/{role_id}', response_model=RoleOut)
+def update_role(role_id: str, data: RoleUpdate, db: Session = Depends(get_db), user_role=Depends(get_current_user)):
+    _, role = user_role
+    if role.id != 'admin':
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only administrators can update roles")
+    if ROLES_FIXED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="角色为固定配置，禁止编辑")
+
+    target = db.query(Role).filter(Role.id == role_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    if data.name is not None:
+        target.name = data.name
+    if data.description is not None:
+        target.description = data.description
+    if data.permissions is not None:
+        target.permissions = data.permissions
+
+    db.commit()
+    db.refresh(target)
+    return RoleOut(
+        id=target.id,
+        name=target.name,
+        description=target.description,
+        permissions=target.permissions,
+        created_at=target.created_at.isoformat(),
+        updated_at=target.updated_at.isoformat(),
+    )
+
+
+@router.delete('/roles/{role_id}')
+def delete_role(role_id: str, db: Session = Depends(get_db), user_role=Depends(get_current_user)):
+    _, role = user_role
+    if role.id != 'admin':
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only administrators can delete roles")
+    if ROLES_FIXED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="角色为固定配置，禁止删除")
+    if role_id in ['admin', 'operator', 'auditor']:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete system default roles")
+
+    target = db.query(Role).filter(Role.id == role_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    db.delete(target)
+    db.commit()
+    return {'ok': True}
 
 
 @router.get('/{user_id}', response_model=UserOut)
@@ -227,99 +322,3 @@ def reset_password(user_id: str, new_password: str, db: Session = Depends(get_db
     target.set_password(new_password)
     db.commit()
     return {'ok': True}
-
-
-@router.get('/roles', response_model=List[RoleOut])
-def list_roles(db: Session = Depends(get_db), user_role=Depends(get_current_user)):
-    roles = db.query(Role).all()
-    return [
-        RoleOut(
-            id=r.id,
-            name=r.name,
-            description=r.description,
-            permissions=r.permissions,
-            created_at=r.created_at.isoformat(),
-            updated_at=r.updated_at.isoformat(),
-        )
-        for r in roles
-    ]
-
-
-@router.post('/roles', response_model=RoleOut)
-def create_role(data: RoleCreate, db: Session = Depends(get_db), user_role=Depends(get_current_user)):
-    _, role = user_role
-    if role.id != 'admin':
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only administrators can create roles")
-    if ROLES_FIXED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="角色为固定配置，禁止新增")
-    if db.query(Role).filter(Role.id == data.id).first():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role ID already exists")
-
-    new_role = Role(
-        id=data.id,
-        name=data.name,
-        description=data.description,
-        permissions=data.permissions,
-    )
-    db.add(new_role)
-    db.commit()
-    db.refresh(new_role)
-    return RoleOut(
-        id=new_role.id,
-        name=new_role.name,
-        description=new_role.description,
-        permissions=new_role.permissions,
-        created_at=new_role.created_at.isoformat(),
-        updated_at=new_role.updated_at.isoformat(),
-    )
-
-
-@router.put('/roles/{role_id}', response_model=RoleOut)
-def update_role(role_id: str, data: RoleUpdate, db: Session = Depends(get_db), user_role=Depends(get_current_user)):
-    _, role = user_role
-    if role.id != 'admin':
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only administrators can update roles")
-    if ROLES_FIXED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="角色为固定配置，禁止编辑")
-
-    target = db.query(Role).filter(Role.id == role_id).first()
-    if not target:
-        raise HTTPException(status_code=404, detail="Role not found")
-
-    if data.name is not None:
-        target.name = data.name
-    if data.description is not None:
-        target.description = data.description
-    if data.permissions is not None:
-        target.permissions = data.permissions
-
-    db.commit()
-    db.refresh(target)
-    return RoleOut(
-        id=target.id,
-        name=target.name,
-        description=target.description,
-        permissions=target.permissions,
-        created_at=target.created_at.isoformat(),
-        updated_at=target.updated_at.isoformat(),
-    )
-
-
-@router.delete('/roles/{role_id}')
-def delete_role(role_id: str, db: Session = Depends(get_db), user_role=Depends(get_current_user)):
-    _, role = user_role
-    if role.id != 'admin':
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only administrators can delete roles")
-    if ROLES_FIXED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="角色为固定配置，禁止删除")
-    if role_id in ['admin', 'operator', 'auditor']:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete system default roles")
-
-    target = db.query(Role).filter(Role.id == role_id).first()
-    if not target:
-        raise HTTPException(status_code=404, detail="Role not found")
-
-    db.delete(target)
-    db.commit()
-    return {'ok': True}
-

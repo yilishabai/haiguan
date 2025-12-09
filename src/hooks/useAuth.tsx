@@ -26,6 +26,7 @@ interface AuthContextType {
   login: (token: string, user: User, currentRole: Role, roles: Role[]) => Promise<void>
   logout: () => Promise<void>
   switchRole: (roleId: string) => Promise<void>
+  hasPermission: (permission: string) => boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -50,6 +51,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     setIsLoading(false)
   }, [])
+
+  const hasPermission = (permission: string) => {
+    if (!currentRole || !currentRole.permissions) return false
+    try {
+      const perms = JSON.parse(currentRole.permissions) as string[]
+      if (perms.includes('*')) return true
+      return perms.includes(permission)
+    } catch (e) {
+      console.error('Failed to parse permissions', e)
+      return false
+    }
+  }
 
   const login = async (newToken: string, newUser: User, newRole: Role, roles: Role[]) => {
     setToken(newToken)
@@ -113,6 +126,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login,
         logout,
         switchRole,
+        hasPermission,
       }}
     >
       {children}

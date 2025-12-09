@@ -30,74 +30,86 @@ const menuItems = [
     icon: LayoutDashboard, 
     label: '首页总览', 
     path: '/',
-    description: '全局态势感知中心'
+    description: '全局态势感知中心',
+    permission: 'dashboard:read'
   },
   { 
     icon: Brain, 
     label: '能力与模型', 
     path: '/capabilities',
-    description: '算法库与业务模型'
+    description: '算法库与业务模型',
+    permission: 'capabilities:read'
   },
   { 
     icon: Network, 
     label: '供应链协同', 
     path: '/collaboration',
     description: '协同状态全链路监控',
-    badge: '核心'
+    badge: '核心',
+    permission: 'collaboration:read'
   },
   { 
     icon: ShoppingCart, 
     label: '订单管理', 
     path: '/orders',
-    description: '订单接入与统一分发'
+    description: '订单接入与统一分发',
+    permission: 'orders:read'
   },
   { 
     icon: ShieldCheck, 
     label: '报关管理', 
     path: '/customs',
-    description: '申报单导入与合规核算'
+    description: '申报单导入与合规核算',
+    permission: 'customs:read'
   },
   { 
     icon: Truck, 
     label: '智能物流', 
     path: '/logistics',
-    description: '物流追踪与运单管理'
+    description: '物流追踪与运单管理',
+    permission: 'logistics:read'
   },
   { 
     icon: CreditCard, 
     label: '跨境支付', 
     path: '/payment',
-    description: '结算管理与风控'
+    description: '结算管理与风控',
+    permission: 'payment:read'
   },
   { 
     icon: Factory, 
     label: '智能仓储', 
     path: '/warehouse',
-    description: '库存管理与生产调度'
+    description: '库存管理与生产调度',
+    permission: 'warehouse:read'
   },
   { 
     icon: CheckCircle, 
     label: '数字溯源与验收', 
     path: '/acceptance',
-    description: '溯源验收单与指标核算'
+    description: '溯源验收单与指标核算',
+    permission: 'acceptance:read'
   },
   { 
     icon: Users, 
     label: '参与企业', 
     path: '/enterprises',
-    description: '备案企业查询与接入'
+    description: '备案企业查询与接入',
+    permission: 'enterprises:read'
   },
   { 
     icon: Settings, 
     label: '系统设置', 
     path: '/settings',
-    description: '平台配置管理'
+    description: '平台配置管理',
+    permission: 'settings:read'
   },
   { 
     icon: Users, 
     label: '用户管理', 
     path: '/users',
-    description: '用户与角色管理'
+    description: '用户与角色管理',
+    permission: 'users:read'
   }
 ];
 
@@ -115,7 +127,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const { currentRole, availableRoles, switchRole, logout, isAuthenticated } = useAuth();
+  const { currentRole, availableRoles, switchRole, logout, isAuthenticated, hasPermission } = useAuth();
   const role = currentRole?.id || 'trade';
 
   const [systemStats, setSystemStats] = useState({
@@ -153,18 +165,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   }, [location.pathname]);
 
   const visibleMenu = useMemo(() => {
-    const allowPaths: Record<string, Set<string>> = {
-      trade: new Set(['/','/capabilities','/collaboration','/orders','/customs','/warehouse','/acceptance','/enterprises','/settings']),
-      customs: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/acceptance','/enterprises','/settings']),
-      logistics: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/warehouse','/acceptance','/enterprises','/settings']),
-      finance: new Set(['/','/capabilities','/collaboration','/orders','/customs','/logistics','/payment','/warehouse','/acceptance','/enterprises','/settings']),
-      warehouse: new Set(['/','/capabilities','/collaboration','/logistics','/warehouse','/acceptance','/enterprises','/settings']),
-      director: new Set(menuItems.map((m) => m.path)),
-      admin: new Set(menuItems.map((m) => m.path)),
-    };
-    const paths = allowPaths[role] || allowPaths.trade;
-    return menuItems.filter((m) => paths.has(m.path));
-  }, [role]);
+    return menuItems.filter((m) => {
+      if (!m.permission) return true;
+      return hasPermission(m.permission);
+    });
+  }, [hasPermission]);
 
   const handleSwitchRole = async (roleId: string) => {
     try {

@@ -20,10 +20,19 @@ const Payment = React.lazy(() => import('./pages/Payment').then(module => ({ def
 const Warehouse = React.lazy(() => import('./pages/Warehouse').then(module => ({ default: module.Warehouse })));
 const OrderManagement = React.lazy(() => import('./pages/OrderManagement').then(module => ({ default: module.OrderManagement })));
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+const ProtectedRoute: React.FC<{ children: React.ReactNode; permission?: string }> = ({ children, permission }) => {
+  const { isAuthenticated, isLoading, hasPermission } = useAuth();
   if (isLoading) return <div className="flex h-screen items-center justify-center text-white">加载中...</div>;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (permission && !hasPermission(permission)) {
+    return (
+      <div className="flex h-screen items-center justify-center text-white flex-col gap-4">
+        <h1 className="text-2xl font-bold text-red-500">访问拒绝</h1>
+        <p>您没有权限访问此页面</p>
+        <a href="/" className="text-blue-400 hover:underline">返回首页</a>
+      </div>
+    );
+  }
   return <>{children}</>;
 };
 
@@ -41,7 +50,7 @@ function App() {
                   <Route
                     path="/"
                     element={
-                      <ProtectedRoute>
+                      <ProtectedRoute permission="dashboard:read">
                         <Dashboard />
                       </ProtectedRoute>
                     }
@@ -50,7 +59,7 @@ function App() {
                     path="/capabilities"
                     element={
                       <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-                        <ProtectedRoute>
+                        <ProtectedRoute permission="capabilities:read">
                           <Capabilities />
                         </ProtectedRoute>
                       </React.Suspense>
@@ -60,7 +69,7 @@ function App() {
                     path="/orders"
                     element={
                       <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-                        <ProtectedRoute>
+                        <ProtectedRoute permission="orders:read">
                           <OrderManagement />
                         </ProtectedRoute>
                       </React.Suspense>
@@ -70,7 +79,7 @@ function App() {
                     path="/collaboration"
                     element={
                       <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-                        <ProtectedRoute>
+                        <ProtectedRoute permission="collaboration:read">
                           <Collaboration />
                         </ProtectedRoute>
                       </React.Suspense>
@@ -80,7 +89,7 @@ function App() {
                     path="/acceptance"
                     element={
                       <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-                        <ProtectedRoute>
+                        <ProtectedRoute permission="acceptance:read">
                           <Acceptance />
                         </ProtectedRoute>
                       </React.Suspense>
@@ -90,7 +99,7 @@ function App() {
                     path="/enterprises"
                     element={
                       <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-                        <ProtectedRoute>
+                        <ProtectedRoute permission="enterprises:read">
                           <Enterprises />
                         </ProtectedRoute>
                       </React.Suspense>
@@ -100,7 +109,7 @@ function App() {
                     path="/customs"
                     element={
                       <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-                        <ProtectedRoute>
+                        <ProtectedRoute permission="customs:read">
                           <Customs />
                         </ProtectedRoute>
                       </React.Suspense>
@@ -110,7 +119,7 @@ function App() {
                     path="/logistics"
                     element={
                       <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-                        <ProtectedRoute>
+                        <ProtectedRoute permission="logistics:read">
                           <Logistics />
                         </ProtectedRoute>
                       </React.Suspense>
@@ -120,7 +129,7 @@ function App() {
                     path="/payment"
                     element={
                       <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-                        <ProtectedRoute>
+                        <ProtectedRoute permission="payment:read">
                           <Payment />
                         </ProtectedRoute>
                       </React.Suspense>
@@ -130,7 +139,7 @@ function App() {
                     path="/warehouse"
                     element={
                       <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-white">加载中...</div>}>
-                        <ProtectedRoute>
+                        <ProtectedRoute permission="warehouse:read">
                           <Warehouse />
                         </ProtectedRoute>
                       </React.Suspense>
@@ -139,7 +148,7 @@ function App() {
                   <Route
                     path="/users"
                     element={
-                      <ProtectedRoute>
+                      <ProtectedRoute permission="users:read">
                         <UserManagement />
                       </ProtectedRoute>
                     }
@@ -147,7 +156,7 @@ function App() {
                   <Route
                     path="/settings"
                     element={
-                      <ProtectedRoute>
+                      <ProtectedRoute permission="settings:read">
                         <Settings />
                       </ProtectedRoute>
                     }
@@ -164,6 +173,7 @@ function App() {
 
 export default App;
 function Settings() {
+  const { hasPermission } = useAuth();
   const [settings, setSettings] = React.useState<Record<string,string>>({});
   const [loading, setLoading] = React.useState(true);
   React.useEffect(()=>{
@@ -183,7 +193,7 @@ function Settings() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-white">系统设置</h1>
-        <GlowButton onClick={save}>保存</GlowButton>
+        {hasPermission('settings:write') && <GlowButton onClick={save}>保存</GlowButton>}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <HudPanel title="主题">

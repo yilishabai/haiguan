@@ -21,7 +21,7 @@ interface UserRow {
 }
 
 export const UserManagement: React.FC = () => {
-  const { token, currentRole, logout } = useAuth()
+  const { token, currentRole, logout, hasPermission } = useAuth()
   const [users, setUsers] = useState<UserRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -137,8 +137,8 @@ export const UserManagement: React.FC = () => {
   }
 
   const openCreateUser = () => {
-    if (currentRole?.id !== 'admin') {
-      setError('仅管理员可以新增用户')
+    if (!hasPermission('users:write')) {
+      setError('无权限新增用户')
       return
     }
     setNewUsername('')
@@ -189,8 +189,8 @@ export const UserManagement: React.FC = () => {
   }
 
   const openRoleManager = () => {
-    if (currentRole?.id !== 'admin') {
-      setError('仅管理员可以管理角色')
+    if (!hasPermission('users:write')) {
+      setError('无权限管理角色')
       return
     }
     setRoleMgrOpen(true)
@@ -298,15 +298,15 @@ export const UserManagement: React.FC = () => {
           </button>
           <button
             onClick={openCreateUser}
-            disabled={currentRole?.id !== 'admin'}
+            disabled={!hasPermission('users:write')}
             className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition disabled:opacity-60"
           >
             <Plus className="w-4 h-4 mr-2" />
-            新增用户（仅admin）
+            新增用户
           </button>
           <button
             onClick={openRoleManager}
-            disabled={currentRole?.id !== 'admin'}
+            disabled={!hasPermission('users:write')}
             className="inline-flex items-center px-4 py-2 rounded-lg bg-gray-700 text-white border border-gray-600 hover:bg-gray-600 transition disabled:opacity-60"
           >
             角色管理
@@ -356,7 +356,8 @@ export const UserManagement: React.FC = () => {
                 <td className="px-4 py-3">
                   <button
                     onClick={() => openRoleEditor(u)}
-                    className="inline-flex items-center px-3 py-1 bg-gray-800 text-gray-100 rounded border border-gray-700 hover:bg-gray-700 text-xs"
+                    disabled={!hasPermission('users:write')}
+                    className={`inline-flex items-center px-3 py-1 bg-gray-800 text-gray-100 rounded border border-gray-700 hover:bg-gray-700 text-xs ${!hasPermission('users:write') ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <Pencil className="w-3 h-3 mr-1" />
                     角色
@@ -499,6 +500,7 @@ export const UserManagement: React.FC = () => {
                   <input placeholder="角色名称" value={roleName} onChange={(e) => setRoleName(e.target.value)} className="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700 text-white" />
                   <input placeholder="角色描述" value={roleDescription} onChange={(e) => setRoleDescription(e.target.value)} className="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700 text-white" />
                   <input placeholder="权限（JSON或自定义字符串）" value={rolePermissions} onChange={(e) => setRolePermissions(e.target.value)} className="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700 text-white" />
+                  <div className="text-xs text-slate-500 mt-1">示例: {`{"menus": ["dashboard", "customs"], "actions": ["read", "write"]}`}</div>
                   <div className="flex justify-end">
                     <button onClick={createRole} disabled={savingRole} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60">{savingRole ? '创建中...' : '创建角色'}</button>
                   </div>
@@ -531,6 +533,7 @@ export const UserManagement: React.FC = () => {
                   <input placeholder="角色描述" value={roleDescription} onChange={(e) => setRoleDescription(e.target.value)} className="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700 text-white" />
                   <input placeholder="权限（JSON或自定义字符串）" value={rolePermissions} onChange={(e) => setRolePermissions(e.target.value)} className="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700 text-white" />
                 </div>
+                <div className="text-xs text-slate-500 mt-1">示例: {`{"menus": ["dashboard", "customs"], "actions": ["read", "write"]}`}</div>
                 <div className="flex justify-end mt-3">
                   <button onClick={() => { setEditingRoleId(null); setRoleName(''); setRoleDescription(''); setRolePermissions('') }} className="px-4 py-2 rounded bg-gray-800 text-gray-200 hover:bg-gray-700 mr-2">取消</button>
                   <button onClick={updateRole} disabled={savingRole} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60">{savingRole ? '保存中...' : '保存更新'}</button>
