@@ -1462,7 +1462,10 @@ export async function getAlgorithms(q: string = '', offset: number = 0, limit: n
   qs.set('limit', String(limit))
   const res = await fetch(`/api/algorithms?${qs.toString()}`)
   const data = await res.json()
-  return data
+  return (Array.isArray(data) ? data : []).map((r: any) => ({
+    ...r,
+    features: Array.isArray(r.features) ? r.features : (() => { try { return JSON.parse(r.features || '[]') } catch { return [] } })()
+  }))
 }
 
 export async function countAlgorithms(q: string = '') {
@@ -1515,6 +1518,155 @@ export async function applyBusinessModel(orderId: string) {
   const res = await fetch(`/api/risk/score?${qs.toString()}`)
   const json = await res.json()
   return { applied: true, compliance: json.compliance || 0, messages: json.messages || [] }
+}
+
+async function ensureCaseTracesSeed() {
+  await exec(`CREATE TABLE IF NOT EXISTS case_traces (
+    id TEXT PRIMARY KEY,
+    ts TEXT,
+    order_id TEXT,
+    input_snapshot TEXT,
+    model_name TEXT,
+    output_result TEXT,
+    business_outcome TEXT,
+    business_impact_value REAL,
+    confidence REAL,
+    latency_ms INTEGER,
+    hs_code TEXT,
+    hs_chapter TEXT,
+    compliance_score REAL,
+    customs_status TEXT,
+    logistics_status TEXT,
+    settlement_status TEXT
+  )`)
+  const c = (await queryAll(`SELECT COUNT(*) as c FROM case_traces`))[0]?.c || 0
+  if (c === 0) {
+    const orders = await queryAll(`SELECT id, order_number as orderNo, enterprise, category FROM orders ORDER BY created_at DESC LIMIT 120`)
+    for (const o of orders) {
+      const [hs] = await queryAll(`
+        SELECT ci.hs_code as hs
+        FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id
+        WHERE ch.order_id=$oid AND ci.hs_code IS NOT NULL AND ci.hs_code!=''
+        ORDER BY IFNULL(ci.amount, ci.qty*ci.unit_price) DESC LIMIT 1
+      `, { $oid: o.id })
+      const hsCode = hs?.hs || ''
+      const chap = hsCode ? (hsCode.replace(/\./g,'').slice(0,2) || '') : ''
+      const [cc] = await queryAll(`SELECT status FROM customs_clearances WHERE order_id=$oid ORDER BY id DESC LIMIT 1`, { $oid: o.id })
+      const [lg] = await queryAll(`SELECT status FROM logistics WHERE order_id=$oid ORDER BY id DESC LIMIT 1`, { $oid: o.id })
+      const [st] = await queryAll(`SELECT status FROM settlements WHERE order_id=$oid ORDER BY id DESC LIMIT 1`, { $oid: o.id })
+      const id = 'CT' + Math.floor(Math.random()*1e12).toString()
+      const models = ['风控模型 V2.1','归类模型 V2.0','支付风控评分','冷链异常检测','单证一致性校验']
+      const model = models[Math.floor(Math.random()*models.length)]
+      const conf = Math.round((85 + Math.random()*10) * 10) / 10
+      const lat = Math.floor(100 + Math.random()*400)
+      const outcome = (Math.random() < 0.3) ? 'Risk Review' : 'Cleared'
+      const impact = outcome === 'Risk Review' ? Math.round((Math.random()*3000)) : Math.round((Math.random()*2000))
+      const comp = Math.round((80 + Math.random()*15) * 10) / 10
+      await exec(`INSERT INTO case_traces(id,ts,order_id,input_snapshot,model_name,output_result,business_outcome,business_impact_value,confidence,latency_ms,hs_code,hs_chapter,compliance_score,customs_status,logistics_status,settlement_status)
+        VALUES($id,$ts,$oid,$in,$mn,$out,$bo,$bv,$cf,$lt,$hs,$chap,$cs,$cst,$lst,$sst)`,{
+        $id:id,
+        $ts:new Date(Date.now()-Math.floor(Math.random()*7)*86400000).toISOString(),
+        $oid:o.id,
+        $in:`订单 ${o.orderNo} 企业 ${o.enterprise} 品类 ${o.category}`,
+        $mn:model,
+        $out:(model.includes('归类') && hsCode) ? `HS ${hsCode}` : (model.includes('支付') ? '建议渠道: 电汇' : 'OK'),
+        $bo:outcome,
+        $bv:impact,
+        $cf:conf,
+        $lt:lat,
+        $hs:hsCode,
+        $chap:chap,
+        $cs:comp,
+        $cst:cc?.status || 'declared',
+        $lst:lg?.status || 'pickup',
+        $sst:st?.status || 'pending'
+      })
+    }
+  }
+}
+
+export async function getCaseTraces(limit: number = 50) {
+  await ensureCaseTracesSeed()
+  return queryAll(`SELECT id, ts, order_id as orderId, input_snapshot as input, model_name as modelName, output_result as output, business_outcome as businessOutcome, business_impact_value as businessImpactValue, confidence, latency_ms as latencyMs, hs_code as hsCode, hs_chapter as hsChapter, compliance_score as complianceScore, customs_status as customsStatus, logistics_status as logisticsStatus, settlement_status as settlementStatus FROM case_traces ORDER BY ts DESC LIMIT $limit`, { $limit: limit })
+}
+
+async function ensureAlgoTestLogs() {
+  await exec(`CREATE TABLE IF NOT EXISTS algo_test_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    algo_id TEXT,
+    ts TEXT,
+    input TEXT,
+    status TEXT,
+    duration_ms INTEGER
+  )`)
+}
+
+export async function logAlgoTest(algoId: string, input: string, status: string, durationMs: number) {
+  await ensureAlgoTestLogs()
+  await exec(`INSERT INTO algo_test_logs(algo_id,ts,input,status,duration_ms) VALUES($aid,$ts,$in,$st,$dur)`,{ $aid: algoId, $ts: new Date().toISOString(), $in: input, $st: status, $dur: durationMs })
+}
+
+export async function getAlgoTestHistory(limit: number = 50) {
+  await ensureAlgoTestLogs()
+  return queryAll(`SELECT algo_id as algoId, ts, input, status, duration_ms as durationMs FROM algo_test_logs ORDER BY ts DESC LIMIT $limit`,{ $limit: limit })
+}
+
+export async function searchCaseTraces(params: { q?: string; outcome?: string; model?: string; hsChapter?: string; offset?: number; limit?: number }) {
+  await ensureCaseTracesSeed()
+  const where: string[] = []
+  const p: any = { $offset: params.offset || 0, $limit: params.limit || 20 }
+  if (params.q) { where.push(`(input_snapshot LIKE $q OR model_name LIKE $q OR output_result LIKE $q)`); p.$q = `%${params.q}%` }
+  if (params.outcome && params.outcome !== 'all') { where.push(`business_outcome = $bo`); p.$bo = params.outcome }
+  if (params.model && params.model !== 'all') { where.push(`model_name = $mn`); p.$mn = params.model }
+  if (params.hsChapter && params.hsChapter !== 'all') { where.push(`hs_chapter = $chap`); p.$chap = params.hsChapter }
+  const sqlWhere = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  return queryAll(`SELECT id, ts, order_id as orderId, input_snapshot as input, model_name as modelName, output_result as output, business_outcome as businessOutcome, business_impact_value as businessImpactValue, confidence, latency_ms as latencyMs, hs_code as hsCode, hs_chapter as hsChapter, compliance_score as complianceScore, customs_status as customsStatus, logistics_status as logisticsStatus, settlement_status as settlementStatus FROM case_traces ${sqlWhere} ORDER BY ts DESC LIMIT $limit OFFSET $offset`, p)
+}
+
+export async function countCaseTraces(params: { q?: string; outcome?: string; model?: string; hsChapter?: string }) {
+  await ensureCaseTracesSeed()
+  const where: string[] = []
+  const p: any = {}
+  if (params.q) { where.push(`(input_snapshot LIKE $q OR model_name LIKE $q OR output_result LIKE $q)`); p.$q = `%${params.q}%` }
+  if (params.outcome && params.outcome !== 'all') { where.push(`business_outcome = $bo`); p.$bo = params.outcome }
+  if (params.model && params.model !== 'all') { where.push(`model_name = $mn`); p.$mn = params.model }
+  if (params.hsChapter && params.hsChapter !== 'all') { where.push(`hs_chapter = $chap`); p.$chap = params.hsChapter }
+  const sqlWhere = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const rows = await queryAll(`SELECT COUNT(*) as c FROM case_traces ${sqlWhere}`, p)
+  return rows[0]?.c || 0
+}
+
+async function ensureAlgorithmBindings() {
+  await exec(`CREATE TABLE IF NOT EXISTS algorithm_bindings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id TEXT,
+    algorithm_id TEXT,
+    created_at TEXT
+  )`)
+  const c = (await queryAll(`SELECT COUNT(*) as c FROM algorithm_bindings`))[0]?.c || 0
+  if (c === 0) {
+    const orders = await queryAll(`SELECT id FROM orders ORDER BY created_at DESC LIMIT 30`)
+    const algs = await queryAll(`SELECT id FROM algorithms ORDER BY id LIMIT 10`)
+    for (const o of orders) {
+      const a = algs[Math.floor(Math.random()*algs.length)]
+      await exec(`INSERT INTO algorithm_bindings(order_id,algorithm_id,created_at) VALUES($oid,$aid,$ts)`,{ $oid:o.id, $aid:a.id, $ts:new Date().toISOString() })
+    }
+  }
+}
+
+export async function bindAlgorithmToOrder(orderId: string, algorithmId: string) {
+  await ensureAlgorithmBindings()
+  await exec(`INSERT INTO algorithm_bindings(order_id,algorithm_id,created_at) VALUES($oid,$aid,$ts)`,{ $oid: orderId, $aid: algorithmId, $ts: new Date().toISOString() })
+}
+
+export async function getBindingsForOrder(orderId: string) {
+  await ensureAlgorithmBindings()
+  return queryAll(`SELECT algorithm_id as algorithmId FROM algorithm_bindings WHERE order_id=$oid ORDER BY created_at DESC`,{ $oid: orderId })
+}
+
+export async function getBindingsForAlgorithm(algorithmId: string) {
+  await ensureAlgorithmBindings()
+  return queryAll(`SELECT order_id as orderId FROM algorithm_bindings WHERE algorithm_id=$aid ORDER BY created_at DESC`,{ $aid: algorithmId })
 }
 
 export async function enqueueJob(type: string, payload: any) {

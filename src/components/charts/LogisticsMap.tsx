@@ -22,8 +22,9 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
 
       try {
         const providers = [
-          'https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/map/json/world.json',
-          worldUrl
+          worldUrl,
+          'https://fastly.jsdelivr.net/npm/echarts@5/map/json/world.json',
+          'https://unpkg.com/echarts@5/map/json/world.json'
         ]
         for (const url of providers) {
           try {

@@ -16,5 +16,6 @@ def init_db():
     import backend_py.models.business_models
     import backend_py.models.jobs
     import backend_py.models.users
+    import backend_py.models.model_metrics
     Base.metadata.create_all(bind=engine)
 

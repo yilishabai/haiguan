@@ -107,13 +107,13 @@ export const Enterprises: React.FC = () => {
             <option value="exporter">出口</option>
             <option value="both">进出口</option>
           </select>
-          <select value={status} onChange={(e)=>{ setPage(1); setStatus(e.target.value) }} className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text白">
+          <select value={status} onChange={(e)=>{ setPage(1); setStatus(e.target.value) }} className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
             <option value="all">状态(全部)</option>
             <option value="active">活跃</option>
             <option value="inactive">不活跃</option>
             <option value="blocked">阻断</option>
           </select>
-          <select value={category} onChange={(e)=>{ setPage(1); setCategory(e.target.value) }} className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text白">
+          <select value={category} onChange={(e)=>{ setPage(1); setCategory(e.target.value) }} className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
             <option value="all">品类(全部)</option>
             <option value="beauty">美妆</option>
             <option value="wine">酒水</option>
@@ -121,7 +121,7 @@ export const Enterprises: React.FC = () => {
             <option value="electronics">电子</option>
             <option value="textile">纺织</option>
           </select>
-          <select value={region} onChange={(e)=>{ setPage(1); setRegion(e.target.value) }} className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text白">
+          <select value={region} onChange={(e)=>{ setPage(1); setRegion(e.target.value) }} className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
             <option value="all">地区(全部)</option>
             <option value="北京">北京</option>
             <option value="上海">上海</option>
@@ -138,7 +138,7 @@ export const Enterprises: React.FC = () => {
           </select>
           <div className="flex items-center gap-2">
             <span className="text-gray-400">每页</span>
-            <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text白">
+            <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
               <option value={25}>25</option>
               <option value={50}>50</option>
               <option value={100}>100</option>

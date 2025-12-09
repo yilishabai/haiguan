@@ -10,6 +10,7 @@ from backend_py.routers.algorithms import router as algorithms_router
 from backend_py.routers.business_models import router as business_models_router
 from backend_py.routers.jobs import router as jobs_router
 from backend_py.routers.risk import router as risk_router
+from backend_py.routers.model_metrics import router as model_metrics_router
 from backend_py.routers.auth import router as auth_router
 from backend_py.routers.users import router as users_router
 from backend_py.seed import seed_all
@@ -32,6 +33,7 @@ app.include_router(algorithms_router)
 app.include_router(business_models_router)
 app.include_router(jobs_router)
 app.include_router(risk_router)
+app.include_router(model_metrics_router)
 
 
 @app.get('/api/health')
