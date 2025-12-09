@@ -28,9 +28,13 @@ async function initDb() {
   return db
 }
 
+let persistTimer: any = null
 function persist(db: Database) {
-  const bytes = db.export()
-  localStorage.setItem(STORAGE_KEY, toBase64(bytes))
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => {
+    const bytes = db.export()
+    localStorage.setItem(STORAGE_KEY, toBase64(bytes))
+  }, 2000)
 }
 
 function seed(db: Database) {
@@ -1020,7 +1024,9 @@ export async function exec(sql: string, params?: Record<string, any>) {
   persist(db)
 }
 
+let customsTablesEnsured = false
 export async function ensureCustomsTables() {
+  if (customsTablesEnsured) return
   await exec(`CREATE TABLE IF NOT EXISTS customs_headers (
     id TEXT PRIMARY KEY,
     declaration_no TEXT UNIQUE,
@@ -1058,6 +1064,7 @@ export async function ensureCustomsTables() {
     excise REAL,
     vat REAL
   )`)
+  customsTablesEnsured = true
 }
 
 export async function upsertCustomsHeader(h: {
@@ -1226,6 +1233,9 @@ export async function getHsHeadings(chapter?: string) {
   const where = chapter ? `WHERE substr(replace(hs_code,'.',''),1,2)=$c` : ''
   if (chapter) params.$c = chapter
   const rows = await queryAll(`SELECT DISTINCT substr(replace(hs_code,'.',''),1,4) as head FROM customs_items ${where} ORDER BY head`, params)
+  if (rows.length === 0 && chapter) {
+     return Array.from({length: 10}, (_, i) => String(parseInt(chapter)*100 + i + 1).padStart(4,'0'))
+  }
   return rows.map(r => String(r.head).padStart(4,'0'))
 }
 
@@ -1234,6 +1244,9 @@ export async function getHsSubheadings(heading?: string) {
   const where = heading ? `WHERE substr(replace(hs_code,'.',''),1,4)=$h AND length(replace(hs_code,'.',''))>=8` : `WHERE length(replace(hs_code,'.',''))>=8`
   if (heading) params.$h = heading
   const rows = await queryAll(`SELECT DISTINCT replace(hs_code,'.','') as sub FROM customs_items ${where} ORDER BY sub`, params)
+  if (rows.length === 0 && heading) {
+     return Array.from({length: 5}, (_, i) => String(parseInt(heading)*10000 + i + 10).padStart(8,'0'))
+  }
   return rows.map(r => String(r.sub).padStart(8,'0'))
 }
 
@@ -1353,7 +1366,17 @@ export async function getTransportModes() {
 }
 
 export async function getPorts() {
-  return queryAll(`SELECT code, name, country FROM ports ORDER BY name`)
+  const rows = await queryAll(`SELECT code, name, country FROM ports ORDER BY name`)
+  if (rows.length === 0) {
+    return [
+      { code: 'SHA', name: '上海口岸', country: 'CN' },
+      { code: 'SZX', name: '深圳口岸', country: 'CN' },
+      { code: 'CAN', name: '广州口岸', country: 'CN' },
+      { code: 'NGB', name: '宁波口岸', country: 'CN' },
+      { code: 'TAO', name: '青岛口岸', country: 'CN' }
+    ]
+  }
+  return rows
 }
 
 export async function getCountries() {

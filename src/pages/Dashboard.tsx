@@ -58,7 +58,23 @@ export const Dashboard: React.FC = () => {
       setKpiImp(await getKpiImprovements());
     };
     load();
-    return () => {};
+
+    const interval = setInterval(() => {
+        // 降低更新频率，使数据变化更真实
+        if (Math.random() > 0.3) { // 70% 概率产生新交易
+            setGmvToday(prev => prev + 200 + Math.random() * 3000); // 单笔订单金额更合理
+        }
+        
+        setMetrics(prev => ({
+            ...prev,
+            activeOrders: prev.activeOrders + (Math.random() > 0.6 ? Math.floor(Math.random() * 3) - 1 : 0), // 订单数缓慢波动
+            dataSyncDelay: Number(Math.max(0.1, Math.min(2.0, prev.dataSyncDelay + (Math.random() * 0.1 - 0.05))).toFixed(1)),
+            systemLoad: Number(Math.max(20, Math.min(80, prev.systemLoad + (Math.random() * 4 - 2))).toFixed(1))
+        }));
+        setLastUpdate(new Date());
+    }, 5000); // 改为5秒刷新一次
+
+    return () => clearInterval(interval);
   }, []);
 
   const CustomTooltip = ({ active, payload, label }: any) => {

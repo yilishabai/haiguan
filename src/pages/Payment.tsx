@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useState, useContext } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
 import { getSettlementsPaged, countSettlements, upsertSettlement, deleteSettlement, getLinkableOrders, enqueueJob, applyBusinessModel, queryAll } from '../lib/sqlite'
 import { CreditCard, ShieldCheck, AlertTriangle } from 'lucide-react'
-import { RoleContext } from '../components/layout/MainLayout'
+import { useAuth } from '../hooks/useAuth'
 
 export const Payment: React.FC = () => {
-  const { role } = useContext(RoleContext)
+  const { currentRole } = useAuth()
+  const role = currentRole?.id
   const canEdit = role === 'finance'
   const canApprove = role === 'director'
   const [q, setQ] = useState('')

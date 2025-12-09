@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState, useContext } from 'react'
-import { RoleContext } from '../components/layout/MainLayout'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useAuth } from '../hooks/useAuth'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
 import { getCustomsHeadersPaged, countCustomsHeaders, getCustomsItems, upsertCustomsHeader, insertCustomsItem, computeTaxes, ensureCustomsTables, getHsChapters, getHsHeadings, getHsSubheadings, getPorts, getLinkableOrders, queryAll, enqueueJob, applyBusinessModel } from '../lib/sqlite'
 import * as XLSX from 'xlsx'
 
 export const Customs: React.FC = () => {
-  const { role: currentRole } = useContext(RoleContext)
+  const { currentRole } = useAuth()
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [editedHeader, setEditedHeader] = useState<any>({})
   const [q, setQ] = useState('')

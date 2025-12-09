@@ -118,12 +118,24 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { currentRole, availableRoles, switchRole, logout, isAuthenticated } = useAuth();
   const role = currentRole?.id || 'trade';
 
-  const systemStats = {
+  const [systemStats, setSystemStats] = useState({
     onlineEnterprises: 1247,
     activeOrders: 8932,
     responseTime: 1.2,
     successRate: 99.8
-  };
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSystemStats(prev => ({
+        onlineEnterprises: Math.max(1000, prev.onlineEnterprises + Math.floor(Math.random() * 5) - 2),
+        activeOrders: Math.max(8000, prev.activeOrders + Math.floor(Math.random() * 10) - 3),
+        responseTime: Number((Math.max(0.8, Math.min(2.0, prev.responseTime + (Math.random() * 0.2 - 0.1)))).toFixed(1)),
+        successRate: Number((Math.max(99.0, Math.min(99.9, prev.successRate + (Math.random() * 0.1 - 0.05)))).toFixed(1))
+      }));
+    }, 3000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const apply = async () => {
@@ -181,8 +193,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 <span className="text-deep-space font-bold text-sm">SC</span>
               </div>
               <div>
-                <h1 className="text-lg font-bold text-cyber-cyan">政企数据融合的跨链智能政务平台</h1>
-                <p className="text-xs text-gray-400">Cross-Chain Gov-Enterprise Data Fusion Platform</p>
+                <h1 className="text-lg font-bold text-cyber-cyan">大规模跨境复杂供应链在线协同智能响应平台</h1>
+                <p className="text-xs text-gray-400">Large-scale Cross-border Complex Supply Chain Online Collaborative Intelligent Response Platform</p>
               </div>
             </div>
           </div>

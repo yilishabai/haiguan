@@ -22,6 +22,7 @@ interface AuthContextType {
   currentRole: Role | null
   availableRoles: Role[]
   isAuthenticated: boolean
+  isLoading: boolean
   login: (token: string, user: User, currentRole: Role, roles: Role[]) => Promise<void>
   logout: () => Promise<void>
   switchRole: (roleId: string) => Promise<void>
@@ -34,6 +35,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null)
   const [currentRole, setCurrentRole] = useState<Role | null>(null)
   const [availableRoles, setAvailableRoles] = useState<Role[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const t = localStorage.getItem('auth_token')
@@ -46,6 +48,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setCurrentRole(JSON.parse(r))
       if (rs) setAvailableRoles(JSON.parse(rs))
     }
+    setIsLoading(false)
   }, [])
 
   const login = async (newToken: string, newUser: User, newRole: Role, roles: Role[]) => {
@@ -106,6 +109,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         currentRole,
         availableRoles,
         isAuthenticated: !!token,
+        isLoading,
         login,
         logout,
         switchRole,

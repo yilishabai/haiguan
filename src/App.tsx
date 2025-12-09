@@ -21,7 +21,8 @@ const Warehouse = React.lazy(() => import('./pages/Warehouse').then(module => ({
 const OrderManagement = React.lazy(() => import('./pages/OrderManagement').then(module => ({ default: module.OrderManagement })));
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <div className="flex h-screen items-center justify-center text-white">加载中...</div>;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };

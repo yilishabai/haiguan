@@ -3,10 +3,11 @@ import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
 import { getOrdersPaged, countOrders, upsertOrder, deleteOrder, getEnterprisesPaged, queryAll, applyBusinessModel } from '../lib/sqlite'
 import { ShoppingCart, RefreshCw, Upload, Plus, Trash2 } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import { RoleContext } from '../components/layout/MainLayout'
+import { useAuth } from '../hooks/useAuth'
 
 export const OrderManagement: React.FC = () => {
-  const { role } = useContext(RoleContext)
+  const { currentRole } = useAuth()
+  const role = currentRole?.id
   const canEdit = role === 'trade'
   const isWarehouse = role === 'warehouse'
   const [q, setQ] = useState('')

@@ -4,8 +4,8 @@ import { LogIn, User, Lock, Shield } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 
 export const Login: React.FC = () => {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('admin')
+  const [password, setPassword] = useState('admin')
   const [roleId, setRoleId] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')

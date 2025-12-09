@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useState, useContext } from 'react'
 import { HudPanel, GlowButton } from '../components/ui/HudPanel'
 import { getInventoryPaged, countInventory, upsertInventory, deleteInventory } from '../lib/sqlite'
 import { Factory, Package, ArrowDownCircle, TrendingUp } from 'lucide-react'
-import { RoleContext } from '../components/layout/MainLayout'
+import { useAuth } from '../hooks/useAuth'
 
 export const Warehouse: React.FC = () => {
-  const { role } = useContext(RoleContext)
+  const { currentRole } = useAuth()
+  const role = currentRole?.id
   const canEdit = role === 'warehouse'
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
