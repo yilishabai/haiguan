@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
-import { Package, Truck, CreditCard, Shield, Factory, TrendingUp, AlertTriangle, CheckCircle, Clock, DollarSign, Globe, BarChart3, X, FileText, Activity, Eye } from 'lucide-react';
+import { Package, Truck, CreditCard, Shield, Factory, TrendingUp, AlertTriangle, CheckCircle, Clock, DollarSign, Globe, BarChart3, X, FileText, Activity, Eye, Zap, Layers } from 'lucide-react';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
 import { BeautyDemo } from '../components/BeautyDemo';
-import { getSettlements, getCustomsClearances, getLogisticsData, getPaymentMethods, getInventoryData, queryAll, updateSettlementStatus, updateCustomsStatus, getCollaborationFlows, createOrderFlow, advanceOrderFlow } from '../lib/sqlite';
+import { getSettlements, getCustomsClearances, getLogisticsData, getPaymentMethods, getInventoryData, queryAll, updateSettlementStatus, updateCustomsStatus, getCollaborationFlows, createOrderFlow, advanceOrderFlow, getCollaborationInsights, predictDemand } from '../lib/sqlite';
 
 const DetailModal = ({ isOpen, onClose, title, data, type, onAction }: { 
   isOpen: boolean; 
@@ -143,6 +143,8 @@ export const Collaboration: React.FC = () => {
   const [inventoryData, setInventoryData] = useState<any[]>([]);
   const [overviewSeries, setOverviewSeries] = useState<any[]>([]);
   const [collaborationFlows, setCollaborationFlows] = useState<any[]>([]);
+  const [insights, setInsights] = useState<any | null>(null);
+  const [demandForecast, setDemandForecast] = useState<any | null>(null);
   
   // Modal State
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -198,6 +200,10 @@ export const Collaboration: React.FC = () => {
       const settlements = await getSettlements();
       const customs = await getCustomsClearances();
       const logistics = await getLogisticsData();
+      const ins = await getCollaborationInsights();
+      const dem = await predictDemand('面膜'); // Default demo SKU
+      setInsights(ins);
+      setDemandForecast(dem);
       const payments = await getPaymentMethods();
       const inventory = await getInventoryData();
       const flows = await getCollaborationFlows();
@@ -293,6 +299,61 @@ export const Collaboration: React.FC = () => {
       </div>
 
       {/* 协同流程总览 */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6 mb-6">
+          {insights && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+               <DataCard title="预测准确率" value={`${Math.round(insights.forecastAccuracy*100)}%`} icon={Activity} change="+5.2%" trend="up" />
+               <DataCard title="库存周转率" value={Math.round(insights.inventoryTurnover*10)/10} icon={Activity} change="+12%" trend="up" />
+               <DataCard title="供应商评分" value={insights.supplierScore} icon={Activity} change="Top 5%" trend="up" />
+               <DataCard title="供应链预警" value={insights.alerts.length} icon={AlertTriangle} change="High" trend="down" color="text-amber-400" />
+            </div>
+          )}
+
+          {demandForecast && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <HudPanel title="AI 需求预测 (Demo: 面膜)" subtitle={`置信度 ${demandForecast.confidence}`}>
+                 <div className="flex items-center justify-between mb-4">
+                   <div>
+                     <div className="text-gray-400 text-sm">当前销量</div>
+                     <div className="text-2xl text-white">{demandForecast.currentSales}</div>
+                   </div>
+                   <div className="text-right">
+                     <div className="text-gray-400 text-sm">下月预测</div>
+                     <div className="text-2xl text-cyber-cyan flex items-center gap-2">
+                       {demandForecast.forecast}
+                       {demandForecast.trend==='up' ? <TrendingUp size={16}/> : <TrendingDown size={16}/>}
+                     </div>
+                   </div>
+                 </div>
+                 <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                   <div className="h-full bg-gradient-to-r from-blue-500 to-cyber-cyan" style={{ width: `${(demandForecast.forecast / (demandForecast.currentSales*1.5))*100}%` }} />
+                 </div>
+                 <div className="mt-2 text-xs text-gray-400 flex justify-between">
+                   <span>0</span>
+                   <span>目标: {Math.round(demandForecast.currentSales*1.5)}</span>
+                 </div>
+              </HudPanel>
+              
+              <HudPanel title="协同建议" subtitle="基于 AI 预测">
+                 <div className="space-y-3">
+                   {insights?.alerts.map((alert:string, i:number) => (
+                     <div key={i} className="flex items-start gap-3 p-3 bg-amber-900/10 border border-amber-900/30 rounded">
+                       <AlertTriangle className="text-amber-400 shrink-0 mt-0.5" size={16} />
+                       <div className="text-sm text-gray-300">{alert}</div>
+                     </div>
+                   ))}
+                   <div className="flex items-start gap-3 p-3 bg-emerald-900/10 border border-emerald-900/30 rounded">
+                     <Zap className="text-emerald-400 shrink-0 mt-0.5" size={16} />
+                     <div className="text-sm text-gray-300">建议提前备货核心 SKU，预计下月需求增长 10-15%。</div>
+                   </div>
+                 </div>
+              </HudPanel>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {collaborationProcesses.map((process) => (
           <HudPanel key={process.id} className="p-4">

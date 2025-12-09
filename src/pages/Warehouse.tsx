@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState, useContext } from 'react'
 import { HudPanel, GlowButton } from '../components/ui/HudPanel'
-import { getInventoryPaged, countInventory, upsertInventory, deleteInventory } from '../lib/sqlite'
-import { Factory, Package, ArrowDownCircle, TrendingUp } from 'lucide-react'
+import { getInventoryPaged, countInventory, upsertInventory, deleteInventory, analyzeWarehouse } from '../lib/sqlite'
+import { Factory, Package, ArrowDownCircle, TrendingUp, Layers } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 
 export const Warehouse: React.FC = () => {
@@ -29,7 +29,13 @@ export const Warehouse: React.FC = () => {
     setLoading(true)
     try {
       const list = await getInventoryPaged(q, (page-1)*pageSize, pageSize)
-      setRows(list)
+      // Enrich with zone analysis
+      const enriched = await Promise.all(list.map(async (r:any) => {
+        const zone = r.name ? (r.name.charCodeAt(0)%4 + 1) : 1
+        const analysis = await analyzeWarehouse(`Zone ${zone}`)
+        return { ...r, zoneAnalysis: analysis }
+      }))
+      setRows(enriched)
       const cnt = await countInventory(q)
       setTotal(cnt)
     } finally {
@@ -142,6 +148,20 @@ export const Warehouse: React.FC = () => {
                       <TrendingUp size={12} /> {row.efficiency}%
                     </span>
                   </div>
+                  {row.zoneAnalysis && (
+                    <div className="bg-slate-800/50 p-2 rounded mt-2 text-xs border border-slate-700/50">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-gray-400 flex items-center gap-1"><Layers size={10}/> {row.zoneAnalysis.zone}</span>
+                        <span className={`${row.zoneAnalysis.issue!=='none'?'text-amber-400':'text-emerald-400'}`}>
+                          {row.zoneAnalysis.issue!=='none' ? '拥堵' : '通畅'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-gray-500">
+                        <span>空间利用 {Math.round(row.zoneAnalysis.utilization*100)}%</span>
+                        <span>作业 {Math.round(row.zoneAnalysis.efficiency*100)}%</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )

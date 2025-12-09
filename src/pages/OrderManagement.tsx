@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState, useContext } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
-import { getOrdersPaged, countOrders, upsertOrder, deleteOrder, getEnterprisesPaged, queryAll, applyBusinessModel } from '../lib/sqlite'
-import { ShoppingCart, RefreshCw, Upload, Plus, Trash2 } from 'lucide-react'
+import { getOrdersPaged, countOrders, upsertOrder, deleteOrder, getEnterprisesPaged, queryAll, applyBusinessModel, analyzeOrderRisk } from '../lib/sqlite'
+import { ShoppingCart, RefreshCw, Upload, Plus, Trash2, TrendingUp, AlertTriangle } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { useAuth } from '../hooks/useAuth'
 
@@ -21,7 +21,9 @@ export const OrderManagement: React.FC = () => {
   const [file, setFile] = useState<File | null>(null)
   const [entOpts, setEntOpts] = useState<any[]>([])
   const [entOpen, setEntOpen] = useState(false)
-  
+  const [selected, setSelected] = useState<any | null>(null)
+  const [riskAnalysis, setRiskAnalysis] = useState<any | null>(null)
+
   const [form, setForm] = useState<any>({
     id: '',
     orderNumber: '',
@@ -31,6 +33,15 @@ export const OrderManagement: React.FC = () => {
     amount: 0,
     currency: 'USD'
   })
+
+  useEffect(() => {
+    const run = async () => {
+      if (!selected) { setRiskAnalysis(null); return }
+      const risk = await analyzeOrderRisk(selected.id)
+      setRiskAnalysis(risk)
+    }
+    run()
+  }, [selected])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -177,102 +188,145 @@ export const OrderManagement: React.FC = () => {
         </div>
       </div>
 
-      <HudPanel className="p-4">
-        <div className="flex gap-4 mb-4">
-          <input 
-            value={q} 
-            onChange={(e) => setQ(e.target.value)} 
-            placeholder="搜索订单号/企业..." 
-            className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white flex-1"
-          />
-          <select 
-            value={status} 
-            onChange={(e) => setStatus(e.target.value)} 
-            className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white w-40"
-          >
-            <option value="all">全部状态</option>
-            <option value="created">已创建</option>
-            <option value="pending">处理中</option>
-            <option value="completed">已完成</option>
-            <option value="cancelled">已取消</option>
-          </select>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <HudPanel className="p-4">
+            <div className="flex gap-4 mb-4">
+              <input 
+                value={q} 
+                onChange={(e) => setQ(e.target.value)} 
+                placeholder="搜索订单号/企业..." 
+                className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white flex-1"
+              />
+              <select 
+                value={status} 
+                onChange={(e) => setStatus(e.target.value)} 
+                className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white w-40"
+              >
+                <option value="all">全部状态</option>
+                <option value="created">已创建</option>
+                <option value="pending">处理中</option>
+                <option value="completed">已完成</option>
+                <option value="cancelled">已取消</option>
+              </select>
+            </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left text-gray-300">
-            <thead className="bg-gray-800 text-gray-400 uppercase">
-              <tr>
-                <th className="px-4 py-3">订单号</th>
-                <th className="px-4 py-3">企业名称</th>
-                <th className="px-4 py-3">品类</th>
-                <th className="px-4 py-3">金额</th>
-                <th className="px-4 py-3">状态</th>
-                <th className="px-4 py-3">术语/路线</th>
-                <th className="px-4 py-3">风险</th>
-                <th className="px-4 py-3">创建时间</th>
-                <th className="px-4 py-3">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className="border-b border-gray-800 hover:bg-gray-800/50">
-                  <td className="px-4 py-3 font-mono text-cyber-cyan">{row.orderNumber}</td>
-                  <td className="px-4 py-3 text-white">{row.enterprise}</td>
-                  <td className="px-4 py-3">{row.category==='beauty'?'美妆':row.category==='electronics'?'电子':row.category==='wine'?'酒水':row.category==='textile'?'纺织':row.category==='appliance'?'家电':row.category}</td>
-                  <td className="px-4 py-3 text-emerald-400">{isWarehouse ? '***' : `${row.currency}${['USD','CNY','EUR','GBP'].includes(row.currency)?`（${row.currency==='USD'?'美元':row.currency==='CNY'?'人民币':row.currency==='EUR'?'欧元':'英镑'}）`:''} ${row.amount?.toLocaleString()}`}</td>
-                  <td className="px-4 py-3"><StatusBadge status={row.status} /></td>
-                  <td className="px-4 py-3 text-xs text-gray-400">{row.incoterms? (row.incoterms==='EXW'?'EXW（工厂交货）':row.incoterms==='FOB'?'FOB（装运港船上交货）':row.incoterms==='CIF'?'CIF（到岸价，含保险与运费）':row.incoterms==='DDP'?'DDP（完税后交货）':row.incoterms) : '-'} / {row.tradeTerms? (row.tradeTerms==='T/T'?'T/T（电汇）':row.tradeTerms==='L/C'?'L/C（信用证）':row.tradeTerms==='OA'?'O/A（赊销）':row.tradeTerms) : '-'} / {row.route || '-'}</td>
-                  <td className="px-4 py-3 text-xs">
-                    <span className="text-cyber-cyan">{Math.round((row.riskScore||0))}</span>
-                    {Array.isArray(row.riskMsgs) && row.riskMsgs.length>0 && (
-                      <span className="ml-2 text-amber-300">{String(row.riskMsgs[0])}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">{row.createdAt?.slice(0,19).replace('T',' ')}</td>
-                  <td className="px-4 py-3">
-                    {canEdit && (
-                      <button onClick={() => handleDelete(row.id)} className="text-red-400 hover:text-red-300 transition-colors p-1">
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left text-gray-300">
+                <thead className="bg-gray-800 text-gray-400 uppercase">
+                  <tr>
+                    <th className="px-4 py-3">订单号</th>
+                    <th className="px-4 py-3">企业名称</th>
+                    <th className="px-4 py-3">品类</th>
+                    <th className="px-4 py-3">金额</th>
+                    <th className="px-4 py-3">状态</th>
+                    <th className="px-4 py-3">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr 
+                      key={row.id} 
+                      className={`border-b border-gray-800 cursor-pointer ${selected?.id === row.id ? 'bg-slate-800' : 'hover:bg-gray-800/50'}`}
+                      onClick={() => setSelected(row)}
+                    >
+                      <td className="px-4 py-3 font-mono text-cyber-cyan">{row.orderNumber}</td>
+                      <td className="px-4 py-3 text-white">{row.enterprise}</td>
+                      <td className="px-4 py-3">{row.category==='beauty'?'美妆':row.category==='electronics'?'电子':row.category==='wine'?'酒水':row.category==='textile'?'纺织':row.category==='appliance'?'家电':row.category}</td>
+                      <td className="px-4 py-3 text-emerald-400">{isWarehouse ? '***' : `${row.currency}${['USD','CNY','EUR','GBP'].includes(row.currency)?`（${row.currency==='USD'?'美元':row.currency==='CNY'?'人民币':row.currency==='EUR'?'欧元':'英镑'}）`:''} ${row.amount?.toLocaleString()}`}</td>
+                      <td className="px-4 py-3"><StatusBadge status={row.status} /></td>
+                      <td className="px-4 py-3">
+                        {canEdit && (
+                          <button onClick={(e) => { e.stopPropagation(); handleDelete(row.id) }} className="text-red-400 hover:text-red-300 transition-colors p-1">
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
+              <div className="flex items-center gap-2">
+                <span>共 {total} 条记录</span>
+                <span>|</span>
+                <span>每页</span>
+                <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white">
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+              <div className="flex gap-2">
+                 <button 
+                   disabled={page<=1}
+                   onClick={()=>setPage(p=>p-1)}
+                   className="px-2 py-1 bg-gray-800 rounded hover:bg-gray-700 disabled:opacity-50"
+                 >
+                   上一页
+                 </button>
+                 <span className="px-2 py-1">第 {page} 页</span>
+                 <button 
+                   disabled={page*pageSize >= total}
+                   onClick={()=>setPage(p=>p+1)}
+                   className="px-2 py-1 bg-gray-800 rounded hover:bg-gray-700 disabled:opacity-50"
+                 >
+                   下一页
+                 </button>
+              </div>
+            </div>
+          </HudPanel>
         </div>
-        
-        <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
-          <div className="flex items-center gap-2">
-            <span>共 {total} 条记录</span>
-            <span>|</span>
-            <span>每页</span>
-            <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value)) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white">
-              <option value={5}>5</option>
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
-          </div>
-          <div className="flex gap-2">
-             <button 
-               disabled={page<=1}
-               onClick={()=>setPage(p=>p-1)}
-               className="px-2 py-1 bg-gray-800 rounded hover:bg-gray-700 disabled:opacity-50"
-             >
-               上一页
-             </button>
-             <span className="px-2 py-1">第 {page} 页</span>
-             <button 
-               disabled={page*pageSize >= total}
-               onClick={()=>setPage(p=>p+1)}
-               className="px-2 py-1 bg-gray-800 rounded hover:bg-gray-700 disabled:opacity-50"
-             >
-               下一页
-             </button>
-          </div>
+        <div className="lg:col-span-1 space-y-4">
+          <HudPanel title="订单详情" subtitle={selected ? selected.orderNumber : '请选择订单'}>
+            {selected ? (
+              <div className="space-y-4">
+                 <div className="grid grid-cols-2 gap-2 text-sm">
+                   <div className="text-gray-400">Incoterms</div>
+                   <div className="text-white text-right">{selected.incoterms || '-'}</div>
+                   <div className="text-gray-400">贸易条款</div>
+                   <div className="text-white text-right">{selected.tradeTerms || '-'}</div>
+                   <div className="text-gray-400">路线</div>
+                   <div className="text-white text-right">{selected.route || '-'}</div>
+                   <div className="text-gray-400">创建时间</div>
+                   <div className="text-white text-right">{selected.createdAt?.slice(0,10)}</div>
+                 </div>
+                 {riskAnalysis && (
+                   <div className="pt-4 border-t border-gray-700">
+                     <div className="flex items-center justify-between mb-2">
+                       <h3 className="text-white font-bold flex items-center gap-2"><TrendingUp size={16} className="text-cyber-cyan"/> 智能风控</h3>
+                       <span className={`text-xs px-2 py-0.5 rounded ${riskAnalysis.probability==='high'?'bg-red-900/50 text-red-400':'bg-emerald-900/50 text-emerald-400'}`}>
+                         {riskAnalysis.probability==='high'?'高风险':'低风险'}
+                       </span>
+                     </div>
+                     <div className="space-y-2 text-xs">
+                       <div className="flex justify-between">
+                         <span className="text-gray-400">风险评分</span>
+                         <span className="text-white">{riskAnalysis.riskScore} / 100</span>
+                       </div>
+                       <div className="flex justify-between">
+                         <span className="text-gray-400">预估利润</span>
+                         <span className="text-emerald-400">+{Math.round(riskAnalysis.margin).toLocaleString()} {selected.currency}</span>
+                       </div>
+                       {riskAnalysis.riskScore > 50 && (
+                         <div className="bg-red-900/20 border border-red-900/50 p-2 rounded flex gap-2 items-start text-red-300">
+                           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                           <span>大额订单建议加强信保审核或要求预付比例。</span>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 )}
+              </div>
+            ) : (
+              <div className="text-gray-500 text-center py-8">点击左侧订单查看详情与风控分析</div>
+            )}
+          </HudPanel>
         </div>
-      </HudPanel>
+      </div>
 
       {showModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
