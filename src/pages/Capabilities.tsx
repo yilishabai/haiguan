@@ -4,32 +4,10 @@ import * as echarts from 'echarts';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
 import { UploadModal } from '../components/UploadModal';
 import GaugeChart from '../components/charts/GaugeChart';
-import { Brain, Cpu, Database, TrendingUp, Target, Zap, Play, RefreshCw, Download, Upload, Eye, Edit, Trash2, Terminal, X, FileCode, FileText, Activity, ShieldCheck, DollarSign, Clock, ArrowRight, CheckCircle, AlertTriangle, AlertCircle } from 'lucide-react';
-import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll, countAlgorithms, countBusinessModels, getCaseTraces, logAlgoTest, searchCaseTraces, countCaseTraces, bindAlgorithmToOrder, getBindingsForOrder } from '../lib/sqlite';
+import { Brain, Cpu, Database, TrendingUp, Target, Zap, Play, RefreshCw, Download, Upload, Eye, Edit, Trash2, Terminal, FileCode, FileText, Activity, ShieldCheck, DollarSign } from 'lucide-react';
+import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll, countAlgorithms, countBusinessModels, logAlgoTest, searchCaseTraces, countCaseTraces, bindAlgorithmToOrder, getBindingsForOrder, getAlgorithmFlow, upsertAlgorithmFlow, computeTaxes, getPaymentMethods } from '../lib/sqlite';
 
-// ... (existing algorithmLibrary and businessModels arrays kept for fallback/seed) ...
-const algorithmLibrary = [
-  {
-    id: 'resource-optimization',
-    name: '资源动态优化算法',
-    category: 'optimization',
-    version: 'v2.1.3',
-    status: 'active',
-    accuracy: 94.2,
-    performance: 89.5,
-    usage: 1250,
-    description: '基于机器学习的跨境供应链资源动态分配优化算法',
-    features: ['实时调度', '多目标优化', '约束处理'],
-    lastUpdated: '2025-11-15',
-    author: '算法研发部',
-    code: `def optimize_supply_chain(inventory_data):
-    # 跨境供应链资源动态优化算法 V2.1
-    model = Transformer(d_model=512)
-    risk_factor = calculate_customs_delay()
-    return model.predict(inventory_data, risk=risk_factor)`
-  },
-  // ... other algorithms ...
-];
+//
 
 // ... (rest of the file content until Capabilities component) ...
 
@@ -37,9 +15,7 @@ export const Capabilities: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'algorithms' | 'models'>('dashboard');
   const [algorithms, setAlgorithms] = useState<any[]>([]);
   // ... (other state) ...
-  const [realtimeDecisions, setRealtimeDecisions] = useState<any[]>([]);
-  const [dashboardStats, setDashboardStats] = useState<any>(null);
-  const [executionLogs, setExecutionLogs] = useState<any[]>([]);
+  
   const [caseTraces, setCaseTraces] = useState<any[]>([]);
   const [traceQuery, setTraceQuery] = useState('');
   const [traceOutcome, setTraceOutcome] = useState<'all'|'Cleared'|'Risk Review'>('all');
@@ -49,6 +25,21 @@ export const Capabilities: React.FC = () => {
   const [tracePageSize, setTracePageSize] = useState(10);
   const [traceTotal, setTraceTotal] = useState(0);
   const [bindingOrders, setBindingOrders] = useState<any[]>([]);
+  const [selectedTrace, setSelectedTrace] = useState<any>(null);
+  const [flowAlgoId, setFlowAlgoId] = useState<string>('');
+  const [flowBlocks, setFlowBlocks] = useState<any[]>([]);
+  const [flowEdges, setFlowEdges] = useState<any[]>([]);
+  const [traceOrder, setTraceOrder] = useState<any>(null);
+  const [traceCustoms, setTraceCustoms] = useState<any>(null);
+  const [traceLogistics, setTraceLogistics] = useState<any>(null);
+  const [traceSettlement, setTraceSettlement] = useState<any>(null);
+  const [traceTopItem, setTraceTopItem] = useState<any>(null);
+  const [traceDocuments, setTraceDocuments] = useState<any[]>([]);
+  const [showFullInput, setShowFullInput] = useState(false);
+  const [showFullOutput, setShowFullOutput] = useState(false);
+  const [showRawOutput, setShowRawOutput] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const flowGraphRef = useRef<HTMLDivElement|null>(null);
   const [roiData, setRoiData] = useState<any>(null);
   const [valueMetrics, setValueMetrics] = useState({
     totalValueCreated: 0,
@@ -97,6 +88,30 @@ export const Capabilities: React.FC = () => {
     decision: '#FF0055'
   };
 
+  const toZhOutcome = (s: string) => {
+    const v = (s || '').toLowerCase()
+    if (v.includes('auto-pass') || v.includes('cleared') || v.includes('release')) return '放行'
+    if (v.includes('manual-review') || v.includes('risk') || v.includes('review') || v.includes('flag')) return '风险复核'
+    if (v.includes('blocked') || v.includes('reject') || v.includes('failed')) return '阻断'
+    if (v.includes('error')) return '错误'
+    return s || ''
+  }
+  const toZhStatus = (s: string) => {
+    const v = (s || '').toLowerCase()
+    if (v === 'pending') return '等待中'
+    if (v === 'in_progress' || v === 'processing') return '进行中'
+    if (v === 'completed') return '已完成'
+    if (v === 'rejected' || v === 'failed') return '已拒绝'
+    if (v === 'declared') return '已申报'
+    if (v === 'cleared') return '已通关'
+    if (v === 'held' || v === 'inspecting') return '查验中'
+    if (v === 'customs') return '报关中'
+    if (v === 'pickup') return '揽收'
+    if (v === 'transit') return '运输中'
+    if (v === 'delivery') return '派送中'
+    return s || ''
+  }
+
   // Helper Functions
   const computeAlgorithmPerformance = (algs: any[]) => {
     if (!algs.length) return [];
@@ -111,6 +126,27 @@ export const Capabilities: React.FC = () => {
       { name: '可解释性', value: 85 }
     ];
   };
+
+  const parseOutput = (s: string): { type: string; detail: any } => {
+    const v = String(s || '').trim()
+    if (v.startsWith('HS ')) return { type: '归类结果', detail: v.replace(/^HS\s+/,'') }
+    if (v.includes('建议渠道')) return { type: '支付建议', detail: (v.split(':').pop() || '').trim() }
+    if (v === 'OK') return { type: '通过', detail: '无异常' }
+    let obj: any = null
+    if (v.startsWith('{') || v.startsWith('[')) {
+      try { obj = JSON.parse(v) } catch { obj = null }
+    }
+    if (obj && typeof obj === 'object') return { type: '输出', detail: obj }
+    return { type: '输出', detail: v }
+  }
+
+  const parseInput = (s: string): any => {
+    const v = String(s || '').trim()
+    if (v.startsWith('{') || v.startsWith('[')) {
+      try { return JSON.parse(v) } catch { return v }
+    }
+    return v
+  }
 
   // ... (useEffect for loading data) ...
   useEffect(() => {
@@ -132,8 +168,6 @@ export const Capabilities: React.FC = () => {
         const statsRes = await fetch('/api/model-metrics/dashboard-stats');
         if (statsRes.ok) {
             const stats = await statsRes.json();
-            setDashboardStats(stats);
-            // Fallback/Merge with simulated metrics if needed
             setValueMetrics({
                 totalValueCreated: stats.total_value_created || 0,
                 riskPrevented: stats.risk_prevented_count || 0,
@@ -148,13 +182,14 @@ export const Capabilities: React.FC = () => {
 
         // Fetch Execution Logs
         const logsRes = await fetch('/api/model-metrics/execution-logs?limit=10');
-        if (logsRes.ok) setExecutionLogs(await logsRes.json());
+        if (logsRes.ok) { /* consumed elsewhere in future */ await logsRes.json(); }
         const ct = await searchCaseTraces({ q: traceQuery, outcome: traceOutcome, model: traceModel, hsChapter: traceHs, offset: (tracePage-1)*tracePageSize, limit: tracePageSize })
         setCaseTraces(ct)
         const totalCt = await countCaseTraces({ q: traceQuery, outcome: traceOutcome, model: traceModel, hsChapter: traceHs })
         setTraceTotal(totalCt)
-        const bo = await queryAll(`SELECT id, order_number as orderNo, enterprise FROM orders ORDER BY created_at DESC LIMIT 20`)
-        setBindingOrders(bo)
+      const bo = await queryAll(`SELECT id, order_number as orderNo, enterprise FROM orders ORDER BY created_at DESC LIMIT 20`)
+      setBindingOrders(bo)
+      try { const pm = await getPaymentMethods(); setPaymentMethods(pm || []) } catch { setPaymentMethods([]) }
         
       } catch (e) {
           console.error("Failed to load backend metrics, falling back to simulation", e);
@@ -174,6 +209,99 @@ export const Capabilities: React.FC = () => {
     };
     load();
   }, [algPage, algPageSize, traceQuery, traceOutcome, traceModel, traceHs, tracePage, tracePageSize]);
+
+  useEffect(() => {
+    const pick = async () => {
+      let aid = ''
+      if (selectedTrace?.modelName) {
+        const a = algorithms.find(x=> x.name === selectedTrace.modelName)
+        aid = a?.id || ''
+      } else if (selectedAlgorithm?.id) {
+        aid = String(selectedAlgorithm.id)
+      }
+      setFlowAlgoId(aid)
+      if (aid) {
+        const flow = await getAlgorithmFlow(aid)
+        const blocks = flow?.blocks || []
+        const edges = flow?.edges || []
+        setFlowBlocks(blocks)
+        setFlowEdges(edges)
+      } else {
+        setFlowBlocks([])
+        setFlowEdges([])
+      }
+    }
+    pick()
+  }, [selectedTrace, selectedAlgorithm, algorithms])
+
+  useEffect(() => {
+    const load = async () => {
+      const oid = selectedTrace?.orderId ? String(selectedTrace.orderId) : ''
+      if (!oid) {
+        setTraceOrder(null)
+        setTraceCustoms(null)
+        setTraceLogistics(null)
+        setTraceSettlement(null)
+        setTraceTopItem(null)
+        setTraceDocuments([])
+        return
+      }
+      const [o] = await queryAll(`SELECT order_number as orderNo, enterprise, category, amount, currency, status FROM orders WHERE id=$id`, { $id: oid })
+      setTraceOrder(o || null)
+      const [c] = await queryAll(`SELECT declaration_no as declarationNo, product, status, compliance, risk_score as riskScore FROM customs_clearances WHERE order_id=$oid ORDER BY id DESC LIMIT 1`, { $oid: oid })
+      setTraceCustoms(c || null)
+      const [l] = await queryAll(`SELECT tracking_no as trackingNo, origin, destination, status, estimated_time as eta, actual_time as ata, efficiency FROM logistics WHERE order_id=$oid ORDER BY id DESC LIMIT 1`, { $oid: oid })
+      setTraceLogistics(l || null)
+      const [s] = await queryAll(`SELECT status, settlement_time as time, risk_level as riskLevel FROM settlements WHERE order_id=$oid ORDER BY id DESC LIMIT 1`, { $oid: oid })
+      setTraceSettlement(s || null)
+      const [it] = await queryAll(`SELECT ci.hs_code as hsCode, ci.name as name, ci.qty as qty, ci.unit_price as unitPrice, ci.amount as amount FROM customs_items ci JOIN customs_headers ch ON ci.header_id=ch.id WHERE ch.order_id=$oid ORDER BY IFNULL(ci.amount, ci.qty*ci.unit_price) DESC LIMIT 1`, { $oid: oid })
+      setTraceTopItem(it || null)
+      const docs = await queryAll(`SELECT type as type, number as number, issued_at as issuedAt, url FROM documents WHERE order_id=$oid ORDER BY type`, { $oid: oid })
+      setTraceDocuments(docs || [])
+    }
+    load()
+  }, [selectedTrace])
+
+  useEffect(() => {
+    const el = flowGraphRef.current
+    if (!el) return
+    const chart = echarts.getInstanceByDom(el) || echarts.init(el as any)
+    const nodes = (flowBlocks||[]).map((b:any, i:number)=> ({
+      id: String(b.id),
+      name: b.label,
+      value: b.type,
+      x: 60 + i*160,
+      y: 120,
+      symbolSize: 60,
+      itemStyle: { color: b.type==='输入' ? '#3b82f6' : b.type==='特征工程' ? '#64748b' : b.type==='模型推理' ? '#06b6d4' : b.type==='评估' ? '#f59e0b' : '#22c55e' }
+    }))
+    const edges = (flowEdges||[]).map((e:any)=> ({ source: String(e.from), target: String(e.to) }))
+    const t = selectedTrace || null
+    const tooltipFormatter = (params:any) => {
+      const id = params.data?.id
+      if (!t) return params.name
+      if (id==='model') return `${params.name}\n置信度: ${t.confidence||'-'}%\n耗时: ${t.latencyMs||'-'}ms`
+      if (id==='decision') return `${params.name}\n结果: ${t.businessOutcome||'-'}`
+      if (id==='input') return `${params.name}\n${(t.input||'').slice(0,40)}`
+      return params.name
+    }
+    chart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { formatter: tooltipFormatter },
+      animation: false,
+      series: [{
+        type: 'graph',
+        layout: 'none',
+        roam: true,
+        label: { show: true, color: '#e5e7eb' },
+        edgeSymbol: ['circle','arrow'],
+        edgeSymbolSize: [2, 8],
+        lineStyle: { color: '#94a3b8' },
+        data: nodes,
+        edges: edges
+      }]
+    })
+  }, [flowBlocks, flowEdges, selectedTrace])
 
   // ... (rest of component) ...
 
@@ -265,7 +393,7 @@ export const Capabilities: React.FC = () => {
       };
       setExecutionHistory(prev => [newLog, ...prev]);
       if (selectedAlgorithm?.id) {
-        try { await logAlgoTest(String(selectedAlgorithm.id), newLog.input, newLog.status, duration) } catch {}
+        await logAlgoTest(String(selectedAlgorithm.id), newLog.input, newLog.status, duration).catch(() => null)
       }
     }, 3200);
   };
@@ -395,38 +523,14 @@ export const Capabilities: React.FC = () => {
               </div>
             </HudPanel>
 
-            <HudPanel title="决策路径解释" subtitle="最近一次高风险拦截分析">
-               <div className="relative h-80 bg-slate-900/50 rounded-lg p-4 overflow-hidden">
-                  <div className="absolute top-4 left-4 right-4 flex justify-between items-center text-xs text-gray-400">
-                    <span>Trace ID: {executionLogs[0]?.id?.slice(0,8) || 'TR-2025-X89'}</span>
-                    <StatusBadge status="warning">风险拦截</StatusBadge>
-                  </div>
-                  <div className="mt-8 space-y-6">
-                    <div className="flex items-center gap-3">
-                       <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400"><FileText size={16}/></div>
-                       <div>
-                         <div className="text-sm text-white">申报单输入</div>
-                         <div className="text-xs text-gray-500">包含敏感货品编码</div>
-                       </div>
-                    </div>
-                    <div className="flex justify-center"><ArrowRight className="text-gray-600 rotate-90"/></div>
-                    <div className="flex items-center gap-3">
-                       <div className="w-8 h-8 rounded-full bg-cyber-cyan/20 flex items-center justify-center text-cyber-cyan"><Brain size={16}/></div>
-                       <div>
-                         <div className="text-sm text-white">风控模型 V2.1</div>
-                         <div className="text-xs text-gray-500">置信度 98.5%</div>
-                       </div>
-                    </div>
-                    <div className="flex justify-center"><ArrowRight className="text-gray-600 rotate-90"/></div>
-                    <div className="flex items-center gap-3">
-                       <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-400"><AlertTriangle size={16}/></div>
-                       <div>
-                         <div className="text-sm text-white">业务决策: 拦截</div>
-                         <div className="text-xs text-gray-500">触发人工复核流程</div>
-                       </div>
-                    </div>
-                  </div>
-               </div>
+            <HudPanel title="算法流程可视化" subtitle="按算法查看并编辑流程">
+              <div className="p-3">
+                <div className="text-xs text-gray-400 mb-2">当前算法：{flowAlgoId ? (algorithms.find(a=>a.id===flowAlgoId)?.name || flowAlgoId) : '未选择'}</div>
+                <div className="mb-3 flex items-center gap-2">
+                  <GlowButton size="sm" onClick={async ()=>{ if (flowAlgoId) { await upsertAlgorithmFlow(flowAlgoId, { blocks: flowBlocks, edges: flowEdges }) } }}>保存流程</GlowButton>
+                </div>
+                <div className="h-64" ref={flowGraphRef} />
+              </div>
             </HudPanel>
           </div>
 
@@ -477,7 +581,7 @@ export const Capabilities: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-700">
                   {(caseTraces.length > 0 ? caseTraces : []).map((log:any) => (
-                    <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
+                    <tr key={log.id} className="hover:bg-slate-800/30 transition-colors cursor-pointer" onClick={()=> setSelectedTrace(log)}>
                       <td className="px-4 py-3 text-gray-400">{new Date(log.ts || log.timestamp).toLocaleTimeString()}</td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-500">{String(log.id).slice(0,8)}</td>
                       <td className="px-4 py-3 text-white">{log.input || log.input_snapshot}</td>
@@ -485,11 +589,11 @@ export const Capabilities: React.FC = () => {
                       <td className="px-4 py-3 text-gray-300">{log.output || log.output_result}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                          String(log.businessOutcome || log.business_outcome).includes('Risk') || String(log.businessOutcome || log.business_outcome).includes('Review')
+                          ((log.businessOutcome || log.business_outcome || '')+'').toLowerCase().includes('risk')
                           ? 'bg-orange-900/30 text-orange-400'
                           : 'bg-emerald-900/30 text-emerald-400'
                         }`}>
-                          {log.businessOutcome || log.business_outcome}
+                          {toZhOutcome(log.businessOutcome || log.business_outcome)}
                         </span>
                       </td>
                       <td className="px-4 py-3 font-medium text-white">{log.businessImpactValue || log.business_impact_value}</td>
@@ -497,9 +601,9 @@ export const Capabilities: React.FC = () => {
                       <td className="px-4 py-3 text-gray-300">{log.latencyMs ? `${log.latencyMs}ms` : '-'}</td>
                       <td className="px-4 py-3 text-gray-300">{log.hsChapter || '-'}</td>
                       <td className="px-4 py-3 text-gray-300">{log.complianceScore ? `${log.complianceScore}` : '-'}</td>
-                      <td className="px-4 py-3 text-gray-300">{log.customsStatus || '-'}</td>
-                      <td className="px-4 py-3 text-gray-300">{log.logisticsStatus || '-'}</td>
-                      <td className="px-4 py-3 text-gray-300">{log.settlementStatus || '-'}</td>
+                      <td className="px-4 py-3 text-gray-300">{log.customsStatus ? toZhStatus(log.customsStatus) : '-'}</td>
+                      <td className="px-4 py-3 text-gray-300">{log.logisticsStatus ? toZhStatus(log.logisticsStatus) : '-'}</td>
+                      <td className="px-4 py-3 text-gray-300">{log.settlementStatus ? toZhStatus(log.settlementStatus) : '-'}</td>
                     </tr>
                   ))}
                   {caseTraces.length === 0 && (
@@ -507,15 +611,307 @@ export const Capabilities: React.FC = () => {
                   )}
                 </tbody>
               </table>
-              <div className="mt-3 flex items-center justify-between">
-                <div className="text-gray-400">第 {tracePage} / {Math.max(1, Math.ceil(traceTotal / tracePageSize))} 页</div>
-                <div className="flex items-center gap-2">
-                  <GlowButton size="sm" onClick={()=> setTracePage(p=> Math.max(1, p-1))}>上一页</GlowButton>
-                  <GlowButton size="sm" onClick={()=> setTracePage(p=> p+1)}>下一页</GlowButton>
-                </div>
+            <div className="mt-3 flex items-center justify-between">
+              <div className="text-gray-400">第 {tracePage} / {Math.max(1, Math.ceil(traceTotal / tracePageSize))} 页</div>
+              <div className="flex items-center gap-2">
+                <GlowButton size="sm" onClick={()=> setTracePage(p=> Math.max(1, p-1))}>上一页</GlowButton>
+                <GlowButton size="sm" onClick={()=> setTracePage(p=> p+1)}>下一页</GlowButton>
               </div>
             </div>
-          </HudPanel>
+            {selectedTrace && (
+              <div className="mt-4 p-4 bg-slate-800/50 rounded border border-slate-700">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm text-gray-400">记录详情</div>
+                  <GlowButton size="xs" variant="secondary" onClick={()=> setSelectedTrace(null)}>清空选择</GlowButton>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-gray-500">追踪ID</div>
+                    <div className="text-white font-mono">{String(selectedTrace.id)}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">时间</div>
+                    <div className="text-white">{new Date(selectedTrace.ts || selectedTrace.timestamp).toLocaleString()}</div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <div className="text-gray-500">业务输入</div>
+                    {(() => {
+                      const p = parseInput(selectedTrace.input || selectedTrace.input_snapshot)
+                      if (typeof p === 'string') {
+                        const s = p
+                        const kv: any = {}
+                        const mo = s.match(/订单\s+(\S+)/)
+                        const me = s.match(/企业\s+(\S+)/)
+                        const mc = s.match(/品类\s+(\S+)/)
+                        if (mo) kv['订单号'] = mo[1]
+                        if (me) kv['企业'] = me[1]
+                        if (mc) kv['品类'] = mc[1]
+                        return (
+                          <div className="space-y-2">
+                            <div className="text-white">{s}</div>
+                            {Object.keys(kv).length>0 && (
+                              <div className="grid grid-cols-2 gap-2 mt-2">
+                                {Object.entries(kv).map(([k,v],i)=>(
+                                  <div key={i} className="flex justify-between bg-slate-900/40 rounded px-2 py-1">
+                                    <span className="text-gray-400">{k}</span>
+                                    <span className="font-mono text-white">{String(v)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      }
+                      const entries = Object.entries(p || {})
+                      return (
+                        <div className="grid grid-cols-2 gap-2">
+                          {(showFullInput ? entries : entries.slice(0, 8)).map(([k, v], i) => (
+                            <div key={i} className="flex justify-between bg-slate-900/40 rounded px-2 py-1">
+                              <span className="text-gray-400">{String(k)}</span>
+                              <span className="font-mono text-white">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
+                    {(() => {
+                      const p = parseInput(selectedTrace.input || selectedTrace.input_snapshot)
+                      if (typeof p === 'object' && p && Array.isArray((p as any).items) && (p as any).items.length) {
+                        const items = (p as any).items as any[]
+                        return (
+                          <div className="mt-2">
+                            <div className="text-gray-500 mb-1">货物明细</div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead className="bg-slate-900/40 text-gray-400">
+                                  <tr>
+                                    <th className="px-2 py-1 text-left">品名</th>
+                                    <th className="px-2 py-1 text-right">数量</th>
+                                    <th className="px-2 py-1 text-right">单价</th>
+                                    <th className="px-2 py-1 text-right">金额</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800">
+                                  {(showFullInput ? items : items.slice(0,3)).map((it,idx)=>{
+                                    const amt = it.amount ?? ((it.qty||0)*(it.unitPrice||0))
+                                    return (
+                                      <tr key={idx}>
+                                        <td className="px-2 py-1 text-white">{it.name || it.title || '-'}</td>
+                                        <td className="px-2 py-1 text-right text-white">{it.qty ?? '-'}</td>
+                                        <td className="px-2 py-1 text-right text-white">{it.unitPrice ?? '-'}</td>
+                                        <td className="px-2 py-1 text-right text-white">{amt ?? '-'}</td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
+                    <div className="mt-2 flex gap-2">
+                      <GlowButton size="xs" variant="secondary" onClick={()=> setShowFullInput(v=>!v)}>{showFullInput?'收起输入':'展开全部输入'}</GlowButton>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">调用模型</div>
+                    <div className="text-cyber-cyan">{selectedTrace.modelName || selectedTrace.model_name}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">模型输出</div>
+                    {(() => {
+                      const po = parseOutput(selectedTrace.output || selectedTrace.output_result)
+                      return (
+                        <div>
+                          <div className="text-gray-300 mb-1"><span className="px-2 py-0.5 bg-slate-700/60 rounded text-xs">{po.type}</span></div>
+                          {typeof po.detail === 'string' ? (
+                            <div className="space-y-2">
+                              <div className="text-gray-300">{po.detail}</div>
+                              {po.type==='归类结果' && (()=>{
+                                const hs = String(po.detail||'').replace(/\./g,'')
+                                const chap = hs.slice(0,2)
+                                const head = hs.slice(0,4)
+                                const sub = hs.slice(0,8)
+                                const amt = traceTopItem ? (traceTopItem.amount || ((traceTopItem.qty||0)*(traceTopItem.unitPrice||0))) : 0
+                                const tax = computeTaxes(String(po.detail||''), Number(amt||0))
+                                return (
+                                  <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="flex justify-between"><span className="text-gray-500">章节</span><span className="text-white">{chap || '-'}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">品目</span><span className="text-white">{head || '-'}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">子目</span><span className="text-white">{sub || '-'}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">估算关税</span><span className="text-white">{(tax.tariff||0).toLocaleString()}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">估算增值税</span><span className="text-white">{(tax.vat||0).toLocaleString()}</span></div>
+                                  </div>
+                                )
+                              })()}
+                              {po.type==='支付建议' && (()=>{
+                                const m = paymentMethods.find(x=> String(x.name||x.method) === String(po.detail))
+                                if (!m) return null
+                                return (
+                                  <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="flex justify-between"><span className="text-gray-500">成功率</span><span className="text-white">{(m.successRate||0).toFixed(1)}%</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">平均用时</span><span className="text-white">{m.avgTime || '-'}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">交易量</span><span className="text-white">{m.volume || 0}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">累计金额</span><span className="text-white">{(m.amount||0).toLocaleString()}</span></div>
+                                  </div>
+                                )
+                              })()}
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                {Object.entries(po.detail || {}).slice(0, showFullOutput ? Object.keys(po.detail||{}).length : 8).map(([k,v],i)=>(
+                                  <div key={i} className="flex justify-between bg-slate-900/40 rounded px-2 py-1">
+                                    <span className="text-gray-400">{String(k)}</span>
+                                    <span className="font-mono text-white">{typeof v==='object' ? JSON.stringify(v) : String(v)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {showRawOutput && (
+                                <pre className="bg-slate-900/50 rounded p-2 text-xs text-gray-300 overflow-x-auto">{JSON.stringify(po.detail, null, 2)}</pre>
+                              )}
+                              <div className="flex gap-2">
+                                <GlowButton size="xs" variant="secondary" onClick={()=> setShowFullOutput(v=>!v)}>{showFullOutput?'收起输出':'展开全部输出'}</GlowButton>
+                                <GlowButton size="xs" variant="secondary" onClick={()=> setShowRawOutput(v=>!v)}>{showRawOutput?'收起原始':'查看原始JSON'}</GlowButton>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                  <div>
+                    <div className="text-gray-500">业务结果</div>
+                    <div className="text-emerald-400">{toZhOutcome(selectedTrace.businessOutcome || selectedTrace.business_outcome)}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">置信度</div>
+                    <div className="text-white">{selectedTrace.confidence ? `${selectedTrace.confidence}%` : '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">耗时</div>
+                    <div className="text-white">{selectedTrace.latencyMs ? `${selectedTrace.latencyMs}ms` : '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">HS章</div>
+                    <div className="text-white">{selectedTrace.hsChapter || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">合规评分</div>
+                    <div className="text-white">{selectedTrace.complianceScore ? `${selectedTrace.complianceScore}` : '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">通关状态</div>
+                    <div className="text-white">{selectedTrace.customsStatus ? toZhStatus(selectedTrace.customsStatus) : '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">物流状态</div>
+                    <div className="text-white">{selectedTrace.logisticsStatus ? toZhStatus(selectedTrace.logisticsStatus) : '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">结算状态</div>
+                    <div className="text-white">{selectedTrace.settlementStatus ? toZhStatus(selectedTrace.settlementStatus) : '-'}</div>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  {traceOrder && (
+                    <div className="p-3 bg-slate-800/40 rounded border border-slate-700">
+                      <div className="text-gray-400 mb-1">关联订单</div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between"><span className="text-gray-500">订单号</span><span className="font-mono text-white">{traceOrder.orderNo}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">企业</span><span className="text-white">{traceOrder.enterprise}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">品类</span><span className="text-white">{traceOrder.category}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">金额</span><span className="text-white">{(traceOrder.amount||0).toLocaleString()} {traceOrder.currency}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">状态</span><span className="text-white">{toZhStatus(traceOrder.status)}</span></div>
+                      </div>
+                    </div>
+                  )}
+                  {traceTopItem && (
+                    <div className="p-3 bg-slate-800/40 rounded border border-slate-700">
+                      <div className="text-gray-400 mb-1">申报重点货项</div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between"><span className="text-gray-500">HS编码</span><span className="font-mono text-white">{traceTopItem.hsCode}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">品名</span><span className="text-white">{traceTopItem.name}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">数量</span><span className="text-white">{traceTopItem.qty}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">单价</span><span className="text-white">{traceTopItem.unitPrice}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">金额</span><span className="text-white">{(traceTopItem.amount || (traceTopItem.qty||0)*(traceTopItem.unitPrice||0)).toLocaleString()}</span></div>
+                      </div>
+                      {(() => {
+                        const amt = traceTopItem.amount || ((traceTopItem.qty||0)*(traceTopItem.unitPrice||0))
+                        const tax = computeTaxes(String(traceTopItem.hsCode||''), Number(amt||0))
+                        return (
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                            <div className="flex justify-between"><span className="text-gray-500">关税率</span><span className="text-white">{Math.round((tax.tariffRate||0)*1000)/10}%</span></div>
+                            <div className="flex justify-between"><span className="text-gray-500">增值税率</span><span className="text-white">{Math.round((tax.vatRate||0)*1000)/10}%</span></div>
+                            <div className="flex justify-between"><span className="text-gray-500">消费税率</span><span className="text-white">{Math.round((tax.exciseRate||0)*1000)/10}%</span></div>
+                            <div className="flex justify-between"><span className="text-gray-500">关税</span><span className="text-white">{(tax.tariff||0).toLocaleString()}</span></div>
+                            <div className="flex justify-between"><span className="text-gray-500">消费税</span><span className="text-white">{(tax.excise||0).toLocaleString()}</span></div>
+                            <div className="flex justify-between"><span className="text-gray-500">增值税</span><span className="text-white">{(tax.vat||0).toLocaleString()}</span></div>
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  )}
+                  {traceCustoms && (
+                    <div className="p-3 bg-slate-800/40 rounded border border-slate-700">
+                      <div className="text-gray-400 mb-1">申报信息</div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between"><span className="text-gray-500">申报单号</span><span className="font-mono text-white">{traceCustoms.declarationNo}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">商品</span><span className="text-white">{traceCustoms.product}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">状态</span><span className="text-white">{toZhStatus(traceCustoms.status)}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">合规</span><span className="text-white">{traceCustoms.compliance}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">风险评分</span><span className="text-white">{traceCustoms.riskScore}</span></div>
+                      </div>
+                    </div>
+                  )}
+                  {traceLogistics && (
+                    <div className="p-3 bg-slate-800/40 rounded border border-slate-700">
+                      <div className="text-gray-400 mb-1">物流信息</div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between"><span className="text-gray-500">运单号</span><span className="font-mono text-white">{traceLogistics.trackingNo}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">起点</span><span className="text-white">{traceLogistics.origin}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">终点</span><span className="text-white">{traceLogistics.destination}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">状态</span><span className="text-white">{toZhStatus(traceLogistics.status)}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">预估时长</span><span className="text-white">{traceLogistics.eta || traceLogistics.estimated_time || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">实际时长</span><span className="text-white">{traceLogistics.ata || traceLogistics.actual_time || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">效率</span><span className="text-white">{traceLogistics.efficiency ? `${traceLogistics.efficiency}%` : '-'}</span></div>
+                      </div>
+                    </div>
+                  )}
+                  {traceSettlement && (
+                    <div className="p-3 bg-slate-800/40 rounded border border-slate-700">
+                      <div className="text-gray-400 mb-1">结算信息</div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between"><span className="text-gray-500">状态</span><span className="text-white">{toZhStatus(traceSettlement.status)}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">结算用时</span><span className="text-white">{traceSettlement.time || '-'}</span></div>
+                        {(() => { const r = String(traceSettlement.riskLevel||''); const zh = r==='low'?'低':r==='medium'?'中':r==='high'?'高':r; return (<div className="flex justify-between"><span className="text-gray-500">风险等级</span><span className="text-white">{zh}</span></div>) })()}
+                      </div>
+                    </div>
+                  )}
+                  {traceDocuments && traceDocuments.length > 0 && (
+                    <div className="p-3 bg-slate-800/40 rounded border border-slate-700">
+                      <div className="text-gray-400 mb-1 flex items-center gap-2"><FileText size={14} />关联单证</div>
+                      <div className="space-y-1">
+                        {traceDocuments.map((d:any, idx:number) => (
+                          <div key={idx} className="flex justify-between items-center bg-slate-900/40 rounded px-2 py-1">
+                            <span className="text-gray-300 text-xs">{d.type}</span>
+                            <span className="font-mono text-white text-xs">{d.number}</span>
+                            <span className="text-gray-500 text-xs">{d.issuedAt?.slice(0,10) || ''}</span>
+                            {d.url && (
+                              <a className="text-cyber-cyan text-xs underline" href={d.url} target="_blank" rel="noreferrer">查看</a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </HudPanel>
         </div>
       )}
 
@@ -793,9 +1189,9 @@ export const Capabilities: React.FC = () => {
                              </div>
                            )}
                          </div>
-                      </div>
-                    </div>
-                  )}
+        </div>
+      </div>
+    )}
 
                   {rightPanelTab === 'code' && (
                     <div className="h-full flex flex-col animate-in fade-in slide-in-from-right-4 duration-300">

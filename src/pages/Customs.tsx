@@ -195,6 +195,7 @@ export const Customs: React.FC = () => {
       const countryDest = norm(String(get(first,['目的国','CountryOfDest'])))
       for (let i=0;i<arr.length;i++) {
         const r = arr[i]
+        const name = norm(String(get(r,['商品名称','品名','GoodsName'])))
         let hs = norm(String(get(r,['HS编码','HSCode','商品编码'])))
         if (!hs) {
           const kw = (name||'').toLowerCase()
@@ -203,7 +204,6 @@ export const Customs: React.FC = () => {
           else if (kw.includes('手机')||kw.includes('phone')||kw.includes('电子')) hs = '8517.1200'
           else hs = '8537.1000'
         }
-        const name = norm(String(get(r,['商品名称','品名','GoodsName'])))
         const spec = norm(String(get(r,['规格型号','Spec'])))
         const unit = norm(String(get(r,['计量单位','Unit'])))
         const qty = Number(get(r,['数量','Qty'])) || 0

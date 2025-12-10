@@ -187,7 +187,7 @@ function Settings() {
     load();
   },[]);
   const save = async () => {
-    for (const [k,v] of Object.entries(settings)) await upsertSetting(k, v);
+    for (const [k,v] of (Object.entries(settings) as Array<[string, string]>)) await upsertSetting(k, v);
   };
   return (
     <div className="space-y-6">

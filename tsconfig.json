@@ -8,6 +8,9 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": false,
     "baseUrl": "./",
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": [
         "./src/*"

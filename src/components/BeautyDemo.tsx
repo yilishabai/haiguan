@@ -15,7 +15,8 @@ import {
   Award,
   Zap,
   Eye,
-  Heart
+  Heart,
+  Factory
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from './ui/HudPanel';

@@ -1669,6 +1669,64 @@ export async function getBindingsForAlgorithm(algorithmId: string) {
   return queryAll(`SELECT order_id as orderId FROM algorithm_bindings WHERE algorithm_id=$aid ORDER BY created_at DESC`,{ $aid: algorithmId })
 }
 
+async function ensureAlgorithmFlows() {
+  await exec(`CREATE TABLE IF NOT EXISTS algorithm_flows (
+    algorithm_id TEXT PRIMARY KEY,
+    name TEXT,
+    blocks TEXT,
+    edges TEXT,
+    updated_at TEXT
+  )`)
+  const c = (await queryAll(`SELECT COUNT(*) as c FROM algorithm_flows`))[0]?.c || 0
+  if (c === 0) {
+    const rows = await queryAll(`SELECT id, name FROM algorithms ORDER BY id LIMIT 8`)
+    for (const r of rows) {
+      const blocks = [
+        { id:'input', type:'输入', label:'业务输入' },
+        { id:'features', type:'特征工程', label:'字段抽取/清洗' },
+        { id:'model', type:'模型推理', label:r.name },
+        { id:'evaluation', type:'评估', label:'置信度/阈值' },
+        { id:'decision', type:'业务决策', label:'拦截/放行' }
+      ]
+      const edges = [
+        { from:'input', to:'features' },
+        { from:'features', to:'model' },
+        { from:'model', to:'evaluation' },
+        { from:'evaluation', to:'decision' }
+      ]
+      await exec(`INSERT INTO algorithm_flows(algorithm_id,name,blocks,edges,updated_at) VALUES($id,$n,$b,$e,$t)`,{
+        $id:r.id, $n:r.name, $b: JSON.stringify(blocks), $e: JSON.stringify(edges), $t:new Date().toISOString()
+      })
+    }
+  }
+}
+
+export async function getAlgorithmFlow(algorithmId: string) {
+  await ensureAlgorithmFlows()
+  const rows = await queryAll(`SELECT algorithm_id as algorithmId, name, blocks, edges, updated_at as updatedAt FROM algorithm_flows WHERE algorithm_id=$id`,{ $id: algorithmId })
+  const r = rows[0]
+  if (!r) return null
+  return { algorithmId: r.algorithmId, name: r.name, blocks: JSON.parse(r.blocks || '[]'), edges: JSON.parse(r.edges || '[]'), updatedAt: r.updatedAt }
+}
+
+export async function upsertAlgorithmFlow(algorithmId: string, flow: { blocks: any[]; edges: any[] }) {
+  await ensureAlgorithmFlows()
+  await exec(`INSERT INTO algorithm_flows(algorithm_id,name,blocks,edges,updated_at) 
+    VALUES($id, (SELECT name FROM algorithms WHERE id=$id), $b, $e, $t)
+    ON CONFLICT(algorithm_id) DO UPDATE SET blocks=$b, edges=$e, updated_at=$t`,{
+    $id: algorithmId,
+    $b: JSON.stringify(flow.blocks || []),
+    $e: JSON.stringify(flow.edges || []),
+    $t: new Date().toISOString()
+  })
+}
+
+export async function listAlgorithmFlows() {
+  await ensureAlgorithmFlows()
+  const rows = await queryAll(`SELECT algorithm_id as algorithmId, name, blocks, edges FROM algorithm_flows ORDER BY name`)
+  return rows.map(r=> ({ algorithmId: r.algorithmId, name: r.name, blocks: JSON.parse(r.blocks || '[]'), edges: JSON.parse(r.edges || '[]') }))
+}
+
 export async function enqueueJob(type: string, payload: any) {
   const qs = new URLSearchParams()
   qs.set('type', type)

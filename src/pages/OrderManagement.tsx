@@ -349,7 +349,6 @@ export const OrderManagement: React.FC = () => {
                     onChange={async (e) => {
                       const v = e.target.value
                       setForm({...form, enterprise: v})
-                      setEntQ(v)
                       if (v.trim().length > 0) {
                         const opts = await getEnterprisesPaged(v, 'all', 'all', 'all', 'all', 0, 10)
                         setEntOpts(opts)

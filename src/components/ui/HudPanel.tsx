@@ -29,14 +29,18 @@ export const HudPanel: React.FC<HudPanelProps> = ({
 };
 
 interface DataCardProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   className?: string;
   title?: string;
   value?: string | number;
   unit?: string;
   trend?: 'up' | 'down' | 'stable';
-  status?: 'active' | 'warning' | 'error';
+  status?: string;
   onClick?: () => void;
+  icon?: React.ReactNode | React.ElementType;
+  small?: boolean;
+  change?: string | number;
+  color?: string;
 }
 
 export const DataCard: React.FC<DataCardProps> = ({ 
@@ -47,7 +51,11 @@ export const DataCard: React.FC<DataCardProps> = ({
   unit,
   trend,
   status = 'active',
-  onClick
+  onClick,
+  icon,
+  small = false,
+  change,
+  color
 }) => {
   const trendIcons = {
     up: '▲',
@@ -61,27 +69,48 @@ export const DataCard: React.FC<DataCardProps> = ({
     stable: 'text-gray-400'
   };
 
+  const renderIcon = () => {
+    if (!icon) return null;
+    if (React.isValidElement(icon)) return <div className="mr-2">{icon}</div>;
+    const IconComp = icon as React.ElementType;
+    return <IconComp className="w-5 h-5 mr-2 text-cyber-cyan" />;
+  };
+
+  const valueSize = small ? 'text-lg' : 'text-2xl';
+  const containerPadding = small ? 'py-2' : '';
+  const valueColor = color ? color : '';
+
   return (
     <div className={`data-card ${onClick ? 'cursor-pointer hover:border-cyber-cyan/40' : ''} ${className}`} onClick={onClick}>
-      <div className="flex items-center justify-between mb-2">
-        {title && <h4 className="text-sm font-medium text-gray-300">{title}</h4>}
+      <div className={`flex items-center justify-between mb-2 ${containerPadding}`}>
+        <div className="flex items-center">
+          {renderIcon()}
+          {title && <h4 className="text-sm font-medium text-gray-300">{title}</h4>}
+        </div>
         <span className={`status-indicator ${status}`}></span>
       </div>
       
       {value !== undefined && (
         <div className="flex items-end justify-between">
           <div>
-            <span className="digital-display text-2xl font-bold">
+            <span className={`digital-display ${valueSize} font-bold ${valueColor}`}>
               {typeof value === 'number' ? value.toLocaleString() : value}
             </span>
             {unit && <span className="text-sm text-gray-400 ml-1">{unit}</span>}
           </div>
-          
-          {trend && (
-            <span className={`text-sm ${trendColors[trend]}`}>
-              {trendIcons[trend]}
-            </span>
-          )}
+
+          <div className="flex items-center space-x-3">
+            {change !== undefined && (
+              <span className="text-xs text-gray-400">
+                {typeof change === 'number' ? `${change}` : change}
+              </span>
+            )}
+            {trend && (
+              <span className={`text-sm ${trendColors[trend]}`}>
+                {trendIcons[trend]}
+              </span>
+            )}
+          </div>
         </div>
       )}
       

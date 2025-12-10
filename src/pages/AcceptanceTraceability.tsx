@@ -180,7 +180,7 @@ const ProductPassport = ({ order }: { order?: { id?: string; order_number?: stri
   );
 };
 
-const TimelineNode = ({ event, isLast }: { event: TimelineEvent; isLast: boolean }) => (
+const TimelineNode: React.FC<{ event: TimelineEvent; isLast: boolean }> = ({ event, isLast }) => (
   <div className="relative pl-8 pb-12 last:pb-0">
     {/* Line */}
     {!isLast && (
