@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Package, Truck, CreditCard, Shield, Factory, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Clock, DollarSign, BarChart3, X, FileText, Activity, Zap } from 'lucide-react';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
 import { BeautyDemo } from '../components/BeautyDemo';
-import { getSettlements, getCustomsClearances, getLogisticsData, getPaymentMethods, getInventoryData, queryAll, updateSettlementStatus, updateCustomsStatus, getCollaborationFlows, createOrderFlow, advanceOrderFlow, getCollaborationInsights, predictDemand } from '../lib/sqlite';
+import { getSettlements, getCustomsClearances, getLogisticsData, getPaymentMethods, getInventoryData, queryAll, updateSettlementStatus, updateCustomsStatus, getCollaborationFlows, createOrderFlow, advanceOrderFlow, getCollaborationInsights, predictDemand, setCurrentLogisticsRoutes } from '../lib/sqlite';
 
 const DetailModal = ({ isOpen, onClose, title, data, type, onAction }: { 
   isOpen: boolean; 
@@ -210,6 +210,7 @@ export const Collaboration: React.FC = () => {
       setOrderSettlements(settlements as any);
       setCustomsClearances(customs as any);
       setLogisticsData(logistics as any);
+      try { await setCurrentLogisticsRoutes((logistics||[]).map((l:any)=>({ origin: String(l.origin||''), destination: String(l.destination||''), trackingNo: String(l.trackingNo||'') }))) } catch (_) {}
       setPaymentMethods(payments as any);
       setInventoryData(inventory as any);
       setCollaborationFlows(flows);
@@ -275,6 +276,15 @@ export const Collaboration: React.FC = () => {
   };
 
   const overviewData = overviewSeries;
+
+  useEffect(() => {
+    const push = async () => {
+      try {
+        await setCurrentLogisticsRoutes((logisticsData||[]).map((l:any)=>({ origin: String(l.origin||''), destination: String(l.destination||''), trackingNo: String(l.trackingNo||'') })))
+      } catch (_) {}
+    }
+    push()
+  }, [logisticsData])
 
   const paymentPieData = paymentMethods.map((item) => ({
     name: item.method,

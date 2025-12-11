@@ -5,7 +5,7 @@ import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/Hu
 import { UploadModal } from '../components/UploadModal';
 import GaugeChart from '../components/charts/GaugeChart';
 import { Brain, Cpu, Database, TrendingUp, Target, Zap, Play, RefreshCw, Download, Upload, Eye, Edit, Trash2, Terminal, FileCode, FileText, Activity, ShieldCheck, DollarSign } from 'lucide-react';
-import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll, countAlgorithms, countBusinessModels, logAlgoTest, searchCaseTraces, countCaseTraces, bindAlgorithmToOrder, getBindingsForOrder, getAlgorithmFlow, upsertAlgorithmFlow, computeTaxes, getPaymentMethods, insertCaseTrace } from '../lib/sqlite';
+import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll, countAlgorithms, countBusinessModels, logAlgoTest, searchCaseTraces, countCaseTraces, bindAlgorithmToOrder, getBindingsForOrder, getAlgorithmFlow, upsertAlgorithmFlow, computeTaxes, getPaymentMethods, insertCaseTrace, getModelExecutionLogs, getAlgoTestHistory } from '../lib/sqlite';
 
 //
 
@@ -38,6 +38,7 @@ export const Capabilities: React.FC = () => {
   const [showFullInput, setShowFullInput] = useState(false);
   const [showFullOutput, setShowFullOutput] = useState(false);
   const [showRawOutput, setShowRawOutput] = useState(false);
+
   const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
   const flowGraphRef = useRef<HTMLDivElement|null>(null);
   const [roiData, setRoiData] = useState<any>(null);
@@ -47,6 +48,7 @@ export const Capabilities: React.FC = () => {
     efficiencyGain: 0,
     activeModels: 0
   });
+  
 
   // Algorithm State
   const [algPage, setAlgPage] = useState(1);
@@ -71,7 +73,8 @@ export const Capabilities: React.FC = () => {
   const [isTestRunning, setIsTestRunning] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
   const [testParams, setTestParams] = useState({ batchSize: 32, epochs: 10 });
-  const [executionHistory, setExecutionHistory] = useState<any[]>([]);
+  const [modelExecLogs, setModelExecLogs] = useState<any[]>([]);
+  const [algoExecLogs, setAlgoExecLogs] = useState<any[]>([]);
   const [orderSearch, setOrderSearch] = useState('');
   const [orderList, setOrderList] = useState<any[]>([]);
   const [reco, setReco] = useState<any>(null);
@@ -103,6 +106,32 @@ export const Capabilities: React.FC = () => {
     if (v == null) return []
     return []
   }
+
+  useEffect(() => {
+    const run = async () => {
+      if (rightPanelTab === 'logs') {
+        const rows = await getModelExecutionLogs(20)
+        const mapped = (Array.isArray(rows) ? rows : []).map((r:any) => ({
+          id: r.id,
+          time: new Date(r.timestamp || r.ts).toLocaleTimeString(),
+          input: r.input_snapshot || r.input,
+          status: (() => { const s = (r.status || '').toLowerCase(); if (s === 'success') return '成功'; if (s === 'error') return '错误'; if (s === 'warning') return '警告'; return r.status || ''; })(),
+          duration: `${r.latency_ms || r.durationMs || 0}ms`
+        }))
+        setModelExecLogs(mapped)
+        const arows = await getAlgoTestHistory(20)
+        const amapped = (Array.isArray(arows) ? arows : []).map((r:any) => ({
+          id: String(r.ts || '') + '-' + String(r.input || ''),
+          time: new Date(r.ts).toLocaleTimeString(),
+          input: r.input,
+          status: (() => { const s = (r.status || '').toLowerCase(); if (s.includes('success')) return '成功'; if (s.includes('error')) return '错误'; if (s.includes('warning')) return '警告'; return r.status || ''; })(),
+          duration: `${r.durationMs || 0}ms`
+        }))
+        setAlgoExecLogs(amapped)
+      }
+    }
+    run()
+  }, [rightPanelTab])
 
   const toZhOutcome = (s: string) => {
     const v = (s || '').toLowerCase()
@@ -395,34 +424,33 @@ export const Capabilities: React.FC = () => {
   const handleRunTest = () => {
     setIsTestRunning(true);
     setRightPanelTab('code'); // Switch to code view to show terminal
-    setTerminalLogs([`> Initializing weights (Batch Size: ${testParams.batchSize})...`]);
+    setTerminalLogs([`> 初始化权重（批次大小: ${testParams.batchSize}）...`]);
     
     // Simulate testing process
     setTimeout(() => {
-      setTerminalLogs(prev => [...prev, '> Loading model architecture...']);
+      setTerminalLogs(prev => [...prev, '> 加载模型架构...']);
     }, 800);
     setTimeout(() => {
-      setTerminalLogs(prev => [...prev, '> Allocating tensors...']);
+      setTerminalLogs(prev => [...prev, '> 分配张量...']);
     }, 1600);
     setTimeout(() => {
-      setTerminalLogs(prev => [...prev, `> Running inference on test batch (n=${testParams.batchSize})...`]);
+      setTerminalLogs(prev => [...prev, `> 在测试批次上运行推理（n=${testParams.batchSize}）...`]);
     }, 2400);
     setTimeout(async () => {
       const duration = Math.floor(100 + Math.random() * 50);
-      setTerminalLogs(prev => [...prev, '> Verifying outputs...', `> Done (${duration/1000}s)`]);
+      setTerminalLogs(prev => [...prev, '> 校验输出...', `> 完成 (${duration/1000}s)`]);
       setIsTestRunning(false);
       
       // Add to history
       const newLog = {
         id: Date.now(),
         time: new Date().toLocaleTimeString(),
-        input: `Batch_#${Math.floor(Math.random() * 9000) + 1000}`,
-        status: 'Success',
-        duration: `${duration}ms`
+        input: `批次_${Math.floor(Math.random() * 9000) + 1000}`,
+        status: '成功',
+        duration: `${duration}毫秒`
       };
-      setExecutionHistory(prev => [newLog, ...prev]);
       if (selectedAlgorithm?.id) {
-        await logAlgoTest(String(selectedAlgorithm.id), newLog.input, newLog.status, duration).catch(() => null)
+        await logAlgoTest(String(selectedAlgorithm.id), newLog.input, 'success', duration).catch(() => null)
         try {
           const out = JSON.stringify({ score: Number((90 + Math.random() * 10).toFixed(1)) })
           await insertCaseTrace({
@@ -442,6 +470,17 @@ export const Capabilities: React.FC = () => {
             settlementStatus: 'processing'
           })
         } catch (e) { console.warn(e) }
+        try {
+          const arows = await getAlgoTestHistory(20)
+          const amapped = (Array.isArray(arows) ? arows : []).map((r:any) => ({
+            id: String(r.ts || '') + '-' + String(r.input || ''),
+            time: new Date(r.ts).toLocaleTimeString(),
+            input: r.input,
+            status: (() => { const s = (r.status || '').toLowerCase(); if (s.includes('success')) return '成功'; if (s.includes('error')) return '错误'; if (s.includes('warning')) return '警告'; return r.status || ''; })(),
+            duration: `${r.durationMs || 0}ms`
+          }))
+          setAlgoExecLogs(amapped)
+        } catch { void 0 }
       }
     }, 3200);
   };
@@ -503,7 +542,7 @@ export const Capabilities: React.FC = () => {
           }`}
         >
           <Brain size={16} />
-          <span>算法库</span>
+          <span>供应链业务算法</span>
         </button>
         <button
           onClick={() => setActiveTab('models')}
@@ -538,7 +577,7 @@ export const Capabilities: React.FC = () => {
 
           {/* 2. 可视化监控看板 (Visual Monitoring) */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <HudPanel title="模型效果与业务ROI趋势" subtitle="准确率 vs 业务回报率" className="lg:col-span-2">
+            <HudPanel title="模型效果与业务ROI趋势" subtitle="准确率 vs 业务回报率" className="lg:col-span-3 w-full">
               <div className="h-80">
                 {roiData ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -571,15 +610,7 @@ export const Capabilities: React.FC = () => {
               </div>
             </HudPanel>
 
-            <HudPanel title="算法流程可视化" subtitle="按算法查看并编辑流程">
-              <div className="p-3">
-                <div className="text-xs text-gray-400 mb-2">当前算法：{flowAlgoId ? (algorithms.find(a=>a.id===flowAlgoId)?.name || flowAlgoId) : '未选择'}</div>
-                <div className="mb-3 flex items-center gap-2">
-                  <GlowButton size="sm" onClick={async ()=>{ if (flowAlgoId) { await upsertAlgorithmFlow(flowAlgoId, { blocks: flowBlocks, edges: flowEdges }) } }}>保存流程</GlowButton>
-                </div>
-                <div className="h-64 flex items-center justify-center" ref={flowGraphRef} />
-              </div>
-            </HudPanel>
+            
           </div>
 
           {/* 3. 实施案例追踪 (Case Tracking) */}
@@ -1016,7 +1047,7 @@ export const Capabilities: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* 算法列表 */}
             <div className="lg:col-span-2">
-              <HudPanel title="算法库管理" subtitle="核心算法列表与状态">
+              <HudPanel title="供应链业务算法" subtitle="核心算法列表与状态">
                 <div className="space-y-3">
                   {(() => {
                     let list = algKeyword ? algorithms.filter((a:any)=> (a.name||'').toLowerCase().includes(algKeyword.toLowerCase()) || (a.description||'').toLowerCase().includes(algKeyword.toLowerCase()) || (a.category||'').toLowerCase().includes(algKeyword.toLowerCase())) : algorithms;
@@ -1292,12 +1323,26 @@ export const Capabilities: React.FC = () => {
                   )}
 
                   {rightPanelTab === 'logs' && (
-                    <div className="space-y-2 font-mono text-xs animate-in fade-in slide-in-from-right-4 duration-300">
-                      {executionHistory.map((e) => (
+                    <div className="space-y-3 font-mono text-xs animate-in fade-in slide-in-from-right-4 duration-300">
+                      <div className="text-gray-400">模型调用记录</div>
+                      {(modelExecLogs||[]).map((e:any) => (
                         <div key={e.id} className="p-3 bg-slate-800/30 rounded border border-slate-700/50 flex justify-between items-center hover:bg-slate-800/50 transition-colors">
                           <div className="space-y-1">
                             <div className="text-gray-400">{new Date().toLocaleDateString()} {e.time}</div>
-                            <div className="text-white">Input: {e.input}</div>
+                            <div className="text-white">输入：{e.input}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-emerald-400">{e.status}</div>
+                            <div className="text-gray-500">{e.duration}</div>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="text-gray-400">算法调用记录</div>
+                      {(algoExecLogs||[]).map((e:any) => (
+                        <div key={e.id} className="p-3 bg-slate-800/30 rounded border border-slate-700/50 flex justify-between items-center hover:bg-slate-800/50 transition-colors">
+                          <div className="space-y-1">
+                            <div className="text-gray-400">{new Date().toLocaleDateString()} {e.time}</div>
+                            <div className="text-white">输入：{e.input}</div>
                           </div>
                           <div className="text-right">
                             <div className="text-emerald-400">{e.status}</div>

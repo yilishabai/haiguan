@@ -194,6 +194,15 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
     }
   }, [])
 
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    const data = (flows||[]).map(f=>({ coords:[f.from, f.to], value:1, tooltip: f.tooltip }))
+    try {
+      chart.setOption({ series: [{ type: 'lines', coordinateSystem: 'geo', data }] })
+    } catch (_) {}
+  }, [flows])
+
   return (
     <div
       ref={ref}

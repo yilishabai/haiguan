@@ -75,7 +75,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose }) => 
         
         <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
           <Upload size={20} className="text-cyber-cyan" />
-          模型导入
+          供应链业务算法
         </h3>
         
         {status === 'success' ? (
@@ -84,7 +84,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose }) => 
               <CheckCircle size={32} className="text-emerald-500" />
             </div>
             <h4 className="text-lg font-medium text-white mb-2">导入成功</h4>
-            <p className="text-gray-400 mb-6">模型文件已成功上传至算法库</p>
+            <p className="text-gray-400 mb-6">模型文件已成功上传至供应链业务算法</p>
             <div className="flex justify-center gap-3">
               <GlowButton variant="secondary" onClick={() => { reset(); onClose(); }}>关闭</GlowButton>
               <GlowButton onClick={reset}>继续导入</GlowButton>

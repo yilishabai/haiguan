@@ -1407,10 +1407,16 @@ export async function getEnterpriseSeries() {
   const activeOverrideRow = await queryAll(`SELECT value as v FROM system_metrics WHERE key='active_orders'`)
   const onlineRawRow = await queryAll(`SELECT COUNT(*) as c FROM enterprises WHERE status!='blocked'`)
   const activeRawRow = await queryAll(`SELECT COUNT(*) as c FROM orders WHERE status!='completed'`)
-  const online = (onlineOverrideRow[0]?.v && onlineOverrideRow[0]?.v > 0) ? onlineOverrideRow[0]?.v : (onlineRawRow[0]?.c || 0)
-  const active = (activeOverrideRow[0]?.v && activeOverrideRow[0]?.v > 0) ? activeOverrideRow[0]?.v : (activeRawRow[0]?.c || 0)
-  const hours = Array.from({ length: 12 }, (_, i) => String(i*2).padStart(2,'0')+':00')
-  return hours.map(h => ({ time: h, online, active }))
+  const baseOnline = (onlineOverrideRow[0]?.v && onlineOverrideRow[0]?.v > 0) ? onlineOverrideRow[0]?.v : (onlineRawRow[0]?.c || 0)
+  const baseActive = (activeOverrideRow[0]?.v && activeOverrideRow[0]?.v > 0) ? activeOverrideRow[0]?.v : (activeRawRow[0]?.c || 0)
+  const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2,'0')+':00')
+  return hours.map((h,i) => {
+    const w1 = Math.sin((i/24)*Math.PI*2)
+    const w2 = Math.sin(((i+3)/24)*Math.PI*2)
+    const online = Math.max(0, Math.round(baseOnline * (1 + w1*0.02 + (Math.random()-0.5)*0.01)))
+    const active = Math.max(0, Math.round(baseActive * (1 + w2*0.08 + (Math.random()-0.5)*0.04)))
+    return { time: h, online, active }
+  })
 }
 
 export async function getSettlements() {
@@ -1684,6 +1690,15 @@ export async function logAlgoTest(algoId: string, input: string, status: string,
 export async function getAlgoTestHistory(limit: number = 50) {
   await ensureAlgoTestLogs()
   return queryAll(`SELECT algo_id as algoId, ts, input, status, duration_ms as durationMs FROM algo_test_logs ORDER BY ts DESC LIMIT $limit`,{ $limit: limit })
+}
+
+export async function getModelExecutionLogs(limit: number = 50) {
+  const res = await fetch(`/api/model-metrics/execution-logs?limit=${limit}`).catch(() => null)
+  if (res) {
+    const data = await res.json().catch(() => [])
+    if (Array.isArray(data) && data.length) return data
+  }
+  return []
 }
 
 export async function insertCaseTrace(trace: {
@@ -2068,6 +2083,23 @@ export async function getSettings() {
 export async function upsertSetting(key: string, value: string) {
   await exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`)
   await exec(`INSERT INTO settings(key,value) VALUES($k,$v) ON CONFLICT(key) DO UPDATE SET value=$v`, { $k: key, $v: value })
+}
+
+export async function setCurrentLogisticsRoutes(routes: Array<{ origin: string; destination: string; trackingNo?: string }>) {
+  await exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`)
+  await exec(`INSERT INTO settings(key,value) VALUES('current_logistics_routes',$v) ON CONFLICT(key) DO UPDATE SET value=$v`, { $v: JSON.stringify(routes || []) })
+}
+
+export async function getCurrentLogisticsRoutes(): Promise<Array<{ origin: string; destination: string; trackingNo?: string }>> {
+  await exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`)
+  const rows = await queryAll(`SELECT value as v FROM settings WHERE key='current_logistics_routes'`)
+  try {
+    const v = rows[0]?.v || '[]'
+    const parsed = JSON.parse(v)
+    return Array.isArray(parsed) ? parsed : []
+  } catch (_) {
+    return []
+  }
 }
 
 export async function getCollaborationAccuracy() {

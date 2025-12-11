@@ -3,13 +3,17 @@ import random
 import uuid
 import os
 import json
+import csv
 import time
 from datetime import datetime, timedelta
 from faker import Faker
 
 # --- 1. 基础配置 ---
-# 数据库路径 (根据此前沟通修正)
+# 数据库路径
 DB_PATH = r'../../backend_py/app.db'
+# 企业名单文件 (请确保此文件在脚本同级目录下)
+ENTERPRISE_CSV_FILE = '生成的企业名单.xlsx - Sheet1.csv'
+
 NUM_ORDERS = 5000   # 生成订单数量
 BATCH_SIZE = 500    # 批量提交阈值
 
@@ -17,33 +21,56 @@ BATCH_SIZE = 500    # 批量提交阈值
 fake = Faker('zh_CN')
 
 # --- 2. 严格枚举 (来源于数据字典) ---
-# 商品类别
 CATEGORIES = ['beauty', 'electronics', 'wine', 'textile', 'appliance']
-# 货币
 CURRENCIES = ['CNY', 'USD', 'EUR', 'GBP']
-# 订单状态
 ORDER_STATUSES = ['pending', 'processing', 'customs', 'shipping', 'completed', 'blocked']
-# 结算状态 (settlements)
 SETTLEMENT_STATUSES = ['pending', 'processing', 'completed', 'failed']
-# 物流状态 (logistics) - 注意：字典要求 completed 代表已签收
 LOGISTICS_STATUSES = ['pickup', 'transit', 'customs', 'completed']
-# 报关状态 (customs)
 CUSTOMS_STATUSES = ['declared', 'cleared', 'held', 'inspecting']
-# 风险等级
 RISK_LEVELS = ['low', 'medium', 'high']
-# 算法类别
-ALGO_CATEGORIES = ['optimization', 'coordination', 'inventory', 'control', 'decision']
 
-# --- 3. 中文语料池 (本地化) ---
+# --- 3. 数据加载与语料池 ---
 
-# 虚拟企业池 (模拟200家固定客户，虽然没有表，但数据要真实)
-ENTERPRISE_POOL = []
-suffixes = ['进出口有限公司', '供应链管理公司', '国际贸易部', '跨境电商集团', '物流科技公司']
-for _ in range(200):
-    name = f"{fake.city()}{fake.word()}{random.choice(suffixes)}"
-    ENTERPRISE_POOL.append(name)
+def load_enterprises_from_csv():
+    """
+    尝试从 CSV 文件加载企业名单。
+    如果文件不存在或读取失败，回退到 Faker 随机生成。
+    """
+    pool = []
+    file_path = os.path.join(os.path.dirname(__file__), ENTERPRISE_CSV_FILE)
+    
+    if os.path.exists(file_path):
+        print(f"📂 发现企业名单文件: {ENTERPRISE_CSV_FILE}，正在读取...")
+        try:
+            # 使用 utf-8-sig 以处理 Excel 导出可能带有的 BOM
+            with open(file_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.reader(f)
+                for i, row in enumerate(reader):
+                    if row:
+                        # 假设第一列是企业名称
+                        name = row[0].strip()
+                        # 简单的过滤：跳过看起来像表头的行
+                        if name and name not in ['企业名称', 'Company Name', 'Name', '企业']:
+                            pool.append(name)
+            print(f"✅ 成功加载 {len(pool)} 家企业名称。")
+        except Exception as e:
+            print(f"⚠️ 读取 CSV 出错 ({e})，将回退到模拟生成模式。")
+    else:
+        print(f"⚠️ 未找到文件 '{ENTERPRISE_CSV_FILE}'，将回退到模拟生成模式。")
 
-# 商品与HS编码映射 (涵盖美妆/酒水/家电)
+    # 如果没读到数据，使用 Faker 生成
+    if not pool:
+        print("🎲 正在使用 Faker 生成虚拟企业名单...")
+        suffixes = ['进出口有限公司', '供应链管理公司', '国际贸易部', '跨境电商集团', '物流科技公司']
+        for _ in range(200):
+            pool.append(f"{fake.city()}{fake.word()}{random.choice(suffixes)}")
+            
+    return pool
+
+# 加载企业池
+ENTERPRISE_POOL = load_enterprises_from_csv()
+
+# 商品与HS编码映射
 PRODUCT_MAP = {
     'beauty': [("玻尿酸补水面膜", "3304.99.00"), ("赋活抗皱眼霜", "3304.91.00"), ("纳米防晒喷雾", "3304.99.00")],
     'electronics': [("5G通信模组", "8517.62.99"), ("工业控制芯片", "8542.31.00"), ("柔性OLED屏", "8524.91.00")],
@@ -55,23 +82,18 @@ PRODUCT_MAP = {
 # --- 4. 辅助工具函数 ---
 
 def get_iso_time(delta_days=0, base_time=None):
-    """生成符合 ISO 8601 的时间字符串 (2025-12-11T08:30:00.000Z)"""
     if base_time:
         dt = base_time
     else:
         dt = datetime.now()
-    # 增加随机小时偏移
     target = dt + timedelta(days=delta_days, hours=random.randint(-5, 5))
     return target.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 def get_date_str(dt_obj):
-    """生成 YYYY-MM-DD 格式 (用于 customs_headers.declare_date)"""
     return dt_obj.strftime("%Y-%m-%d")
 
 def generate_distinct_code(algo_name, category):
-    """
-    根据算法类别生成 20+ 行差异化明显的 Python 伪代码
-    """
+    """根据算法类别生成 20+ 行差异化明显的 Python 伪代码"""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     if category == 'optimization':
@@ -192,7 +214,6 @@ class SafetyStockCalculator:
         return sum(sales_history[-7:]) / 7
 """
     else:
-        # Default Template
         return f"""# Algorithm: {algo_name}
 # Category: General Logic
 # Generated: {ts}
@@ -236,10 +257,7 @@ def execute_logic(context_data):
 # --- 5. 核心逻辑 ---
 
 def clean_database(cursor):
-    """
-    清理旧数据，保留用户表。
-    注意：因为企业表已被移除（合并入订单），所以删除 orders 表即清理了企业数据。
-    """
+    """清理旧数据，保留用户表"""
     print("🧹 正在执行全量数据清理 (保留 Users/Roles)...")
     tables_to_clear = [
         'orders', 'settlements', 'logistics', 'inventory', 
@@ -247,21 +265,18 @@ def clean_database(cursor):
         'model_metrics', 'model_execution_logs', 
         'customs_headers', 'customs_items'
     ]
-    
     for table in tables_to_clear:
         try:
             cursor.execute(f"DELETE FROM {table}")
-            # 重置自增ID
             cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{table}'")
         except sqlite3.OperationalError:
-            # 防止表不存在时报错
             pass
-    print("   已清除所有业务交易数据及旧的企业记录。")
+    print("   已清除所有业务交易数据。")
 
 def generate_algo_and_models(cursor):
     print("🧠 正在生成 25+ 算法与业务模型库...")
     
-    # 1. 算法库 (Algorithms)
+    # 1. 算法库
     algo_seeds = [
         ("仓储路径蚁群优化算法", "optimization"), ("多式联运协同调度引擎", "coordination"),
         ("库存动态安全水位模型", "inventory"), ("自动化设备控制逻辑", "control"),
@@ -280,25 +295,21 @@ def generate_algo_and_models(cursor):
     
     algos = []
     for i, (name, cat) in enumerate(algo_seeds):
-        # accuracy/performance: 0-100 (REAL)
         algos.append((
-            str(uuid.uuid4()), 
-            name, 
-            cat, 
-            f"v{random.randint(1,5)}.{random.randint(0,9)}", # version
-            random.choice(['active', 'active', 'testing']),  # status
-            round(random.uniform(85.0, 99.9), 1),            # accuracy (0-100)
-            round(random.uniform(20.0, 98.0), 1),            # performance (0-100)
-            random.randint(1000, 500000),                    # usage
-            f"针对{cat}场景的高性能算法，支持实时调用。",       # description
-            json.dumps(["GPU加速", "自动容错", "实时日志"], ensure_ascii=False), # features (JSON String)
-            get_iso_time(),                                  # last_updated
-            f"{fake.last_name()}博士",                       # author
-            generate_distinct_code(f"Algo_{i}", cat)         # code
+            str(uuid.uuid4()), name, cat, 
+            f"v{random.randint(1,5)}.{random.randint(0,9)}", 
+            random.choice(['active', 'active', 'testing']), 
+            round(random.uniform(85.0, 99.9), 1),
+            round(random.uniform(20.0, 98.0), 1),
+            random.randint(1000, 500000),
+            f"针对{cat}场景的高性能算法，支持实时调用。",
+            json.dumps(["GPU加速", "自动容错", "实时日志"], ensure_ascii=False),
+            get_iso_time(), f"{fake.last_name()}博士",
+            generate_distinct_code(f"Algo_{i}", cat)
         ))
     cursor.executemany("INSERT INTO algorithms VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", algos)
 
-    # 2. 业务模型 (Business Models)
+    # 2. 业务模型
     model_seeds = [
         ("跨境电商B2B直接出口(9710)", "B2B"), ("跨境电商出口海外仓(9810)", "B2B"),
         ("网购保税进口(1210)", "Import"), ("直购进口(9610)", "Import"),
@@ -317,44 +328,34 @@ def generate_algo_and_models(cursor):
     
     models = []
     for i, (name, cat) in enumerate(model_seeds):
-        # scenarios/compliance: JSON Object String
-        # chapters: JSON Array String
         models.append((
-            str(uuid.uuid4()), 
-            name, 
-            cat, 
-            f"2025.R{i}", 
+            str(uuid.uuid4()), name, cat, f"2025.R{i}", 
             random.choice(['active', 'active', 'development']),
-            random.randint(50, 2000),       # enterprises
-            random.randint(5000, 500000),   # orders
-            f"基于海关最新公告的{name}标准业务模型。", # description
-            json.dumps({"type": "standard", "region": "CN"}, ensure_ascii=False), # scenarios
-            json.dumps({"level": "Strict", "audit": "Annual"}, ensure_ascii=False), # compliance
-            json.dumps([str(x) for x in range(1, random.randint(3,8))]), # chapters e.g. ["1","2"]
-            round(random.uniform(90.0, 99.9), 1), # success_rate (0-100)
-            get_iso_time(), 
-            f"{fake.company()}关务部" # maintainer
+            random.randint(50, 2000), random.randint(5000, 500000),
+            f"基于海关最新公告的{name}标准业务模型。",
+            json.dumps({"type": "standard", "region": "CN"}, ensure_ascii=False),
+            json.dumps({"level": "Strict", "audit": "Annual"}, ensure_ascii=False),
+            json.dumps([str(x) for x in range(1, random.randint(3,8))]),
+            round(random.uniform(90.0, 99.9), 1),
+            get_iso_time(), f"{fake.company()}关务部"
         ))
     cursor.executemany("INSERT INTO business_models VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", models)
 
 def generate_inventory(cursor):
     print("📦 正在根据商品类别初始化库存...")
     inv_data = []
-    # 展平所有商品
     all_products = [p[0] for cat in PRODUCT_MAP.values() for p in cat]
     for prod_name in all_products:
         inv_data.append((
             prod_name,
-            random.randint(1000, 5000),  # current
-            random.randint(5000, 10000), # target
-            random.randint(200, 800),    # production
-            random.randint(100, 600),    # sales
-            random.randint(60, 100)      # efficiency (0-100)
+            random.randint(1000, 5000), random.randint(5000, 10000),
+            random.randint(200, 800), random.randint(100, 600),
+            random.randint(60, 100)
         ))
     cursor.executemany("INSERT INTO inventory VALUES (?,?,?,?,?,?)", inv_data)
 
 def generate_transactions(cursor, conn):
-    print(f"💸 正在生成 {NUM_ORDERS} 条订单流 (模拟 {len(ENTERPRISE_POOL)} 家企业的业务)...")
+    print(f"💸 正在生成 {NUM_ORDERS} 条订单流 (使用 CSV 加载的 {len(ENTERPRISE_POOL)} 家企业)...")
     
     buffer = {
         'orders': [], 'settlements': [], 'logistics': [],
@@ -362,110 +363,74 @@ def generate_transactions(cursor, conn):
     }
     
     for _ in range(NUM_ORDERS):
-        # --- 1. 基础信息 ---
         order_id = str(uuid.uuid4())
         category = random.choice(CATEGORIES)
-        enterprise = random.choice(ENTERPRISE_POOL) # 从虚拟池中取
+        # 从加载的池中随机取企业
+        enterprise = random.choice(ENTERPRISE_POOL) 
         base_time = fake.date_time_between(start_date='-1y', end_date='now')
-        
-        # 随机决定该订单的当前状态
-        # 权重倾向于 completed 以展示全流程数据
         status = random.choices(ORDER_STATUSES, weights=[10, 20, 15, 20, 30, 5], k=1)[0]
         
-        # --- 2. 插入 Orders ---
+        # 1. Orders
         buffer['orders'].append((
             order_id,
             f"ORD{base_time.strftime('%Y%m%d')}{random.randint(10000, 99999)}",
-            enterprise,
-            category,
-            status,
+            enterprise, category, status,
             round(random.uniform(500, 50000), 2),
             random.choice(CURRENCIES),
-            get_iso_time(base_time=base_time),                # created_at
-            get_iso_time(base_time=base_time, delta_days=1)   # updated_at
+            get_iso_time(base_time=base_time),
+            get_iso_time(base_time=base_time, delta_days=1)
         ))
         
-        # --- 3. 关联表逻辑 (仅当状态进展到相应阶段时生成) ---
-        
-        # 结算 (Settlements)
-        # 只有 processing 及之后的状态才有结算记录
+        # 2. 关联逻辑
+        # 结算
         if status in ['processing', 'customs', 'shipping', 'completed']:
             settle_status = 'completed' if status == 'completed' else 'processing'
             if status == 'blocked': settle_status = 'failed'
-            
             buffer['settlements'].append((
-                str(uuid.uuid4()), 
-                order_id, 
-                settle_status,
-                random.randint(2, 72),      # settlement_time (INTEGER hours)
-                random.choice(RISK_LEVELS)
+                str(uuid.uuid4()), order_id, settle_status,
+                random.randint(2, 72), random.choice(RISK_LEVELS)
             ))
             
-        # 物流 (Logistics)
-        # 只有 customs, shipping, completed 才有物流
+        # 物流
         if status in ['customs', 'shipping', 'completed']:
-            # 映射订单状态到物流状态
             log_status = 'transit'
             if status == 'customs': log_status = 'customs'
             if status == 'completed': log_status = 'completed'
-            
             buffer['logistics'].append((
-                str(uuid.uuid4()),
-                f"SF{random.randint(100000000, 999999999)}",
-                f"中国{fake.city()}", f"美国洛杉矶", # Origin/Dest
-                log_status,
-                random.randint(100, 300), # estimated_time (INTEGER hours)
-                random.randint(90, 320),  # actual_time (INTEGER hours)
-                random.randint(70, 100),  # efficiency (0-100)
-                order_id
+                str(uuid.uuid4()), f"SF{random.randint(100000000, 999999999)}",
+                f"中国{fake.city()}", f"美国洛杉矶",
+                log_status, random.randint(100, 300), random.randint(90, 320),
+                random.randint(70, 100), order_id
             ))
             
-        # 报关 (Customs)
-        # shipping, completed 肯定已报关；customs 正在报关
+        # 报关
         if status in ['customs', 'shipping', 'completed']:
             cust_status = 'cleared' if status in ['shipping', 'completed'] else 'inspecting'
             header_id = str(uuid.uuid4())
-            
-            # Header
             buffer['customs_headers'].append((
-                header_id,
-                f"DEC{random.randint(100000000, 999999999)}",
-                enterprise, 
-                enterprise, # consignor
-                "Overseas Buyer Inc.", # consignee
-                random.choice(['CNSGH', 'CNNGB', 'CNHKG']), # port_code
-                "0110", # trade_mode
-                "USD",  # currency
-                random.uniform(5000, 50000), # total_value
-                random.uniform(100, 500),    # gross_weight
-                random.uniform(90, 480),     # net_weight
-                random.randint(1, 50),       # packages
-                "CN", "US",                  # country_origin/dest
-                cust_status,
-                get_date_str(base_time),     # declare_date (YYYY-MM-DD)
-                order_id,
-                get_iso_time(base_time=base_time)
+                header_id, f"DEC{random.randint(100000000, 999999999)}",
+                enterprise, enterprise, "Overseas Buyer Inc.",
+                random.choice(['CNSGH', 'CNNGB', 'CNHKG']),
+                "0110", "USD",
+                random.uniform(5000, 50000), random.uniform(100, 500),
+                random.uniform(90, 480), random.randint(1, 50),
+                "CN", "US", cust_status,
+                get_date_str(base_time), order_id, get_iso_time(base_time=base_time)
             ))
             
-            # Items (取商品详情)
-            prod_info = random.choice(PRODUCT_MAP[category]) # (name, hs_code)
+            prod_info = random.choice(PRODUCT_MAP[category])
             buffer['customs_items'].append((
                 str(uuid.uuid4()), header_id, 1,
-                prod_info[1], # hs_code
-                prod_info[0], # name
-                "标准箱装",    # spec
-                "PCS",        # unit
-                random.randint(10, 1000),     # qty
-                random.uniform(10, 100),      # unit_price
-                random.uniform(100, 10000),   # amount
-                "CN", 0.13, 0.05, 0.0, 0.13   # origin, tax...
+                prod_info[1], prod_info[0], "标准箱装", "PCS",
+                random.randint(10, 1000), random.uniform(10, 100),
+                random.uniform(100, 10000),
+                "CN", 0.13, 0.05, 0.0, 0.13
             ))
 
         # 批量写入
         if len(buffer['orders']) >= BATCH_SIZE:
             _flush(cursor, buffer)
 
-    # 尾部写入
     if buffer['orders']:
         _flush(cursor, buffer)
 
@@ -490,24 +455,24 @@ def main():
     cursor = conn.cursor()
 
     try:
-        # 1. 清理 (清除旧的企业数据和业务记录)
+        # 1. 加载 CSV 企业名单
+        # (ENTERPRISE_POOL 已在全局加载，此处通过 random.choice 使用)
+        
+        # 2. 清理
         clean_database(cursor)
         
-        # 2. 生成基础库 (25+ 算法与模型)
+        # 3. 生成基础库
         generate_algo_and_models(cursor)
-        
-        # 3. 生成库存
         generate_inventory(cursor)
         
-        # 4. 生成交易流水 (订单 -> 结算/物流/报关)
+        # 4. 生成交易流水
         generate_transactions(cursor, conn)
         
         conn.commit()
         
         print(f"\n✅ 数据初始化完成！")
         print(f"   - 订单生成数: {NUM_ORDERS}")
-        print(f"   - 虚拟企业数: {len(ENTERPRISE_POOL)} (已重置)")
-        print(f"   - 算法/模型: 25+ (代码已差异化)")
+        print(f"   - 企业来源: {ENTERPRISE_CSV_FILE}")
         
     except Exception as e:
         print(f"\n❌ 发生异常: {e}")

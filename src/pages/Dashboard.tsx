@@ -3,7 +3,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { HudPanel, DataCard, MetricDisplay, StatusBadge } from '../components/ui/HudPanel';
 import LogisticsMap from '../components/charts/LogisticsMap';
 import { useNavigate } from 'react-router-dom';
-import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getTodayGMV, getPortsCongestion, consistencyCheck, getKpiImprovements, getTradesPerMinute, getLogisticsData } from '../lib/sqlite';
+import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getTodayGMV, getPortsCongestion, consistencyCheck, getKpiImprovements, getTradesPerMinute, getLogisticsData, getCurrentLogisticsRoutes } from '../lib/sqlite';
 import { 
   Package,
   Activity,
@@ -68,7 +68,9 @@ export const Dashboard: React.FC = () => {
         '东京':[139.6917,35.6895], '大阪':[135.5022,34.6937], '新加坡':[103.8198,1.3521], '吉隆坡':[101.6869,3.139], '曼谷':[100.5018,13.7563], '悉尼':[151.2093,-33.8688]
       };
       const geo = (city:string):[number,number] => coords[city] ?? [116.4074,39.9042];
-      setFlows((logisticsList||[]).slice(0, 200).map((l:any)=>({ from: geo(String(l.origin||'')), to: geo(String(l.destination||'')), tooltip: `${l.origin} → ${l.destination} ${l.trackingNo||''}` })));
+      const currentRoutes = await getCurrentLogisticsRoutes();
+      const base = (currentRoutes && currentRoutes.length ? currentRoutes : (logisticsList||[])).slice(0,200);
+      setFlows(base.map((l:any)=>({ from: geo(String(l.origin||'')), to: geo(String(l.destination||'')), tooltip: `${l.origin} → ${l.destination} ${l.trackingNo||''}` })));
       setGmvToday(gmv || Math.round((1_000_000 + Math.random() * 20_000_000) * 100) / 100);
       setPorts(portsData.map((p:any)=>({ port:p.port, index:p.congestionIndex })));
       setSyncDelay(delay);
@@ -91,6 +93,20 @@ export const Dashboard: React.FC = () => {
         }));
         setTps(p => Math.max(50, Math.min(800, Math.round(p + (Math.random() * 40 - 20)))));
         setLastUpdate(new Date());
+        (async () => {
+          try {
+            const currentRoutes = await getCurrentLogisticsRoutes();
+            if (currentRoutes && currentRoutes.length) {
+              const coords: Record<string, [number, number]> = {
+                '上海':[121.4917,31.2333], '深圳':[114.0579,22.5431], '广州':[113.2644,23.1291], '宁波':[121.549,29.868], '青岛':[120.3826,36.0671], '天津':[117.2,39.085], '厦门':[118.089,24.4798],
+                '纽约':[-74.006,40.7128], '洛杉矶':[-118.2437,34.0522], '伦敦':[-0.1276,51.5074], '鹿特丹':[4.4777,51.9244], '汉堡':[9.9937,53.5511], '巴黎':[2.3522,48.8566], '马德里':[-3.7038,40.4168],
+                '东京':[139.6917,35.6895], '大阪':[135.5022,34.6937], '新加坡':[103.8198,1.3521], '吉隆坡':[101.6869,3.139], '曼谷':[100.5018,13.7563], '悉尼':[151.2093,-33.8688]
+              };
+              const geo = (city:string):[number,number] => coords[city] ?? [116.4074,39.9042];
+              setFlows(currentRoutes.slice(0,200).map((l:any)=>({ from: geo(String(l.origin||'')), to: geo(String(l.destination||'')), tooltip: `${l.origin} → ${l.destination} ${l.trackingNo||''}` })));
+            }
+          } catch (_) {}
+        })();
     }, 5000); // 改为5秒刷新一次
 
     return () => clearInterval(interval);

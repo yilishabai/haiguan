@@ -29,7 +29,7 @@ const researchGoals = [
   },
   {
     id: 'algorithm-lib',
-    name: '跨境供应链智能分析算法库',
+    name: '供应链业务算法',
     progress: 92,
     status: 'completed',
     deadline: '2025-06-30',
@@ -251,7 +251,7 @@ export const Research: React.FC = () => {
         >
           <div className="mt-4 flex items-center justify-between">
             <CheckCircle className="text-emerald-green" size={24} />
-            <span className="text-xs text-gray-400">算法库完成</span>
+            <span className="text-xs text-gray-400">供应链业务算法完成</span>
           </div>
         </DataCard>
 
@@ -482,7 +482,7 @@ export const Research: React.FC = () => {
             <p className="text-sm text-gray-300 mb-3">3个项目按计划推进</p>
             <div className="space-y-2">
               <div className="flex justify-between text-xs">
-                <span className="text-gray-400">算法库</span>
+                <span className="text-gray-400">供应链业务算法</span>
                 <span className="text-emerald-green">已完成</span>
               </div>
               <div className="flex justify-between text-xs">

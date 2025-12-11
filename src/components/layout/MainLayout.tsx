@@ -37,7 +37,7 @@ const menuItems = [
     icon: Brain, 
     label: '能力与模型', 
     path: '/capabilities',
-    description: '算法库与业务模型',
+    description: '供应链业务算法与业务模型',
     permission: 'capabilities:read'
   },
   { 
