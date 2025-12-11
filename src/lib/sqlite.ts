@@ -45,7 +45,11 @@ function seed(db: Database) {
     CREATE TABLE IF NOT EXISTS system_metrics (key TEXT PRIMARY KEY, value REAL);
     INSERT INTO system_metrics(key,value) VALUES
       ('data_sync_delay',0.8),
-      ('system_load',68.5);
+      ('system_load',68.5),
+      ('online_enterprises',159557),
+      ('active_orders',58885),
+      ('success_rate',99.6),
+      ('response_time_s',1.0);
 
     CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY,
@@ -275,10 +279,11 @@ function seed(db: Database) {
         $cr: created,
         $up: updated
       }
+      
     )
   }
 
-  ;[
+  [
     { id:'S1', order:'O10000', status:'completed', time:1.8, risk:'low' },
     { id:'S2', order:'O10001', status:'processing', time:2.3, risk:'medium' },
     { id:'S3', order:'O10002', status:'pending', time:0, risk:'high' },
@@ -303,7 +308,7 @@ function seed(db: Database) {
   })
 
   ;[
-    { id:'L1', tr:'SF1234567890', o:'上海', d:'纽约', s:'delivery', et:72, at:68, ef:94.4, oid:'O10000' },
+    { id:'L1', tr:'SF1234567890', o:'上海', d:'纽约', s:'completed', et:72, at:68, ef:94.4, oid:'O10000' },
     { id:'L2', tr:'YT0987654321', o:'深圳', d:'伦敦', s:'customs', et:96, at:89, ef:92.7, oid:'O10001' },
     { id:'L3', tr:'ZTO1122334455', o:'广州', d:'东京', s:'transit', et:48, at:45, ef:93.8, oid:'O10002' },
     { id:'L4', tr:'EMS5566778899', o:'宁波', d:'悉尼', s:'pickup', et:120, at:115, ef:95.8, oid:'O10003' },
@@ -335,6 +340,32 @@ function seed(db: Database) {
   ].forEach(x=>{
     db.run(`INSERT INTO inventory(name,current,target,production,sales,efficiency) VALUES($n,$c,$tg,$pr,$sl,$ef)`,{
       $n:x.n,$c:x.c,$tg:x.tg,$pr:x.pr,$sl:x.sl,$ef:x.ef
+    })
+  })
+
+  // 交易流水（国内流向作为地图数据源）
+  ;[
+    { id:'T1', oid:'O10000', from:'成都', to:'上海', amt:120000, ts:new Date(now - 3600*1000).toISOString() },
+    { id:'T2', oid:'O10001', from:'西安', to:'深圳', amt:98000, ts:new Date(now - 2*3600*1000).toISOString() },
+    { id:'T3', oid:'O10002', from:'武汉', to:'广州', amt:76500, ts:new Date(now - 3*3600*1000).toISOString() },
+    { id:'T4', oid:'O10003', from:'杭州', to:'北京', amt:143000, ts:new Date(now - 4*3600*1000).toISOString() },
+    { id:'T5', oid:'O10004', from:'天津', to:'上海', amt:52000, ts:new Date(now - 5*3600*1000).toISOString() }
+  ].forEach(x=>{
+    db.run(`INSERT INTO trade_stream(id,order_id,from_city,to_city,amount,ts) VALUES($id,$oid,$fc,$tc,$amt,$ts)`,{
+      $id:x.id,$oid:x.oid,$fc:x.from,$tc:x.to,$amt:x.amt,$ts:x.ts
+    })
+  })
+
+  // 港口拥堵指数（国内口岸示例）
+  ;[
+    { port:'上海口岸', idx: 73.2 },
+    { port:'深圳口岸', idx: 58.4 },
+    { port:'宁波口岸', idx: 64.1 },
+    { port:'青岛口岸', idx: 49.8 },
+    { port:'天津口岸', idx: 55.6 }
+  ].forEach(x=>{
+    db.run(`INSERT INTO ports_congestion(port,idx,updated_at) VALUES($p,$i,$t)`,{
+      $p:x.port,$i:x.idx,$t:new Date().toISOString()
     })
   })
 
@@ -503,7 +534,7 @@ function seed(db: Database) {
     })
   }
 
-  ;[
+  [
     { id:'1', no:'APP20241227001', ent:'上海美妆集团有限公司', cat:'beauty', type:'new', st:'under_review', sub:'2024-12-15', exp:'2025-01-15', prio:'high', comp:94.2, risk:28, rev:'张审核员', prog:67.5 },
     { id:'2', no:'APP20241227002', ent:'深圳电子科技有限公司', cat:'electronics', type:'renewal', st:'field_test', sub:'2024-12-10', exp:'2025-01-10', prio:'urgent', comp:87.8, risk:45, rev:'李技术专家', prog:82.1 },
     { id:'3', no:'APP20241227003', ent:'广州食品进出口公司', cat:'wine', type:'new', st:'approved', sub:'2024-11-20', exp:'2024-12-20', prio:'medium', comp:96.5, risk:12, rev:'王合规专员', prog:100 },
@@ -575,23 +606,8 @@ async function syncFromBackendInto(db: Database) {
           $cur:r.currency||'CNY',$tv:r.totalValue||0,$st:r.status||'declared',$dd:String(r.declareDate||new Date().toISOString().slice(0,10)),$oid:r.orderId||'',
           $upd:new Date().toISOString()
         })
-        try {
-          const itsRes = await fetch(`/api/customs/items/${r.id}`)
-          const items = await itsRes.json()
-          for (const it of items) {
-            db.run(`INSERT INTO customs_items(id,header_id,line_no,hs_code,name,spec,unit,qty,unit_price,amount,origin_country,tax_rate,tariff,excise,vat)
-                    VALUES($id,$hid,$ln,$hs,$name,$spec,$unit,$qty,$up,$amt,$oc,$tr,$tar,$ex,$vat)
-                    ON CONFLICT(id) DO UPDATE SET
-                      header_id=$hid, line_no=$ln, hs_code=$hs, name=$name, spec=$spec, unit=$unit, qty=$qty, unit_price=$up,
-                      amount=$amt, origin_country=$oc, tax_rate=$tr, tariff=$tar, excise=$ex, vat=$vat`,{
-              $id:it.id,$hid:it.headerId,$ln:it.lineNo||0,$hs:it.hsCode||'',
-              $name:it.name||'',$spec:it.spec||'',
-              $unit:it.unit||'',$qty:it.qty||0,$up:it.unitPrice||0,$amt:it.amount||0,$oc:it.originCountry||'',
-              $tr:it.taxRate||0,$tar:it.tariff||0,$ex:it.excise||0,$vat:it.vat||0
-            })
-          }
-        } catch (_) {}
-      }
+        try { } catch (_) {}
+        }
     }
     persist(db)
   } catch (_) {}
@@ -740,7 +756,7 @@ function migrate(db: Database) {
     )`)
     const c = db.exec(`SELECT COUNT(*) FROM exchange_rates`)[0]?.values?.[0]?.[0] || 0
     if (c === 0) {
-      ;[
+      [
         { b:'USD', q:'CNY', r:7.12 },
         { b:'EUR', q:'CNY', r:7.80 },
         { b:'GBP', q:'CNY', r:8.90 },
@@ -765,7 +781,7 @@ function migrate(db: Database) {
     )`)
     const c = db.exec(`SELECT COUNT(*) FROM ports`)[0]?.values?.[0]?.[0] || 0
     if (c === 0) {
-      ;[
+      [
         { code:'CNSHA', name:'上海港', country:'CN' },
         { code:'CNYTN', name:'盐田港', country:'CN' },
         { code:'USLAX', name:'洛杉矶港', country:'US' },
@@ -782,7 +798,7 @@ function migrate(db: Database) {
     )`)
     const c = db.exec(`SELECT COUNT(*) FROM countries`)[0]?.values?.[0]?.[0] || 0
     if (c === 0) {
-      ;[
+      [
         { code:'CN', name:'中国' }, { code:'US', name:'美国' }, { code:'GB', name:'英国' }, { code:'FR', name:'法国' }, { code:'DE', name:'德国' }, { code:'JP', name:'日本' }, { code:'SG', name:'新加坡' }
       ].forEach(x=> db.run(`INSERT INTO countries(code,name) VALUES($c,$n)`,{ $c:x.code,$n:x.name }))
     }
@@ -796,7 +812,7 @@ function migrate(db: Database) {
     )`)
     const c = db.exec(`SELECT COUNT(*) FROM units`)[0]?.values?.[0]?.[0] || 0
     if (c === 0) {
-      ;[
+      [
         { code:'PCS', name:'件', factor:1 },
         { code:'KG', name:'千克', factor:1 },
         { code:'G', name:'克', factor:0.001 },
@@ -814,7 +830,7 @@ function migrate(db: Database) {
     )`)
     const c = db.exec(`SELECT COUNT(*) FROM carriers`)[0]?.values?.[0]?.[0] || 0
     if (c === 0) {
-      ;[
+      [
         { id:'MSC', name:'地中海航运', type:'ocean' },
         { id:'MAERSK', name:'马士基', type:'ocean' },
         { id:'CMA', name:'达飞轮船', type:'ocean' },
@@ -833,7 +849,7 @@ function migrate(db: Database) {
     )`)
     const c = db.exec(`SELECT COUNT(*) FROM incoterms`)[0]?.values?.[0]?.[0] || 0
     if (c === 0) {
-      ;[
+      [
         { code:'EXW', name:'工厂交货', description:'买方承担最大责任' },
         { code:'FOB', name:'船上交货', description:'卖方负责到出口港上船' },
         { code:'CIF', name:'成本+保险+运费', description:'卖方承担运保到目的港' },
@@ -1016,7 +1032,7 @@ function migrate(db: Database) {
   } catch (e) {}
 
   try {
-    ;[
+    [
       { id:'customs-anomaly', name:'海关异常检测算法', cat:'control', ver:'v1.0.0', st:'active', acc:92.4, perf:88.1, use:412, desc:'海关智慧大脑：文件/申报/交易异常检测', feats:'["单证一致性","预归类校验","高额交易预警"]', upd:'2025-11-26', auth:'风控组', code:'def customs_anomaly_scan(documents, declarations, trades):\n    anomalies = []\n    if not documents: anomalies.append(\'missing_documents\')\n    if any([t.amount>50000 for t in trades]): anomalies.append(\'high_value\')\n    return anomalies' },
       { id:'demand-forecast', name:'需求预测算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:90.3, perf:87.6, use:768, desc:'基于时序与节假日因子的需求预测', feats:'["季节性","节假日","促销因子"]', upd:'2025-11-26', auth:'预测组', code:'def demand_forecast(series, holidays, promo):\n    model = ARIMA(order=(2,1,2))\n    model.fit(series)\n    return model.predict(steps=30)' },
       { id:'payment-risk', name:'支付风控评分算法', cat:'decision', ver:'v1.0.0', st:'active', acc:89.1, perf:90.4, use:532, desc:'通道成功率、合规与汇率时点综合评分', feats:'["成功率","合规度","时点风险"]', upd:'2025-11-26', auth:'风控组', code:'def payment_risk_score(channel, amount, rate):\n    score = channel.success_rate * 0.7 - (amount/100000) * 0.2\n    return max(0, min(100, score))' },
@@ -1040,7 +1056,7 @@ function migrate(db: Database) {
   } catch (e) {}
 
   try {
-    ;[
+    [
       { id:'beauty-skin-care', name:'美妆-护肤模型', cat:'beauty', ver:'v1.0.0', st:'active', ent:210, ord:2980, desc:'护肤品监管与备案业务模型', sc:'["NMPA备案","配方合规","功效宣称"]', cp:'["NMPA","化妆品监督条例","海关编码"]', sr:93.1, lu:'2025-11-26', mt:'美妆业务部' },
       { id:'beauty-fragrance', name:'美妆-香氛模型', cat:'beauty', ver:'v1.0.0', st:'active', ent:162, ord:1820, desc:'香氛进口监管与税务模型', sc:'["成分合规","标签合规","税收管理"]', cp:'["NMPA","关税","消费税"]', sr:90.6, lu:'2025-11-26', mt:'美妆业务部' },
       { id:'wine-red', name:'酒水-葡萄酒模型', cat:'wine', ver:'v1.0.0', st:'active', ent:128, ord:1560, desc:'红酒进口合规与物流模型', sc:'["原产地证","关税消费税","冷链"]', cp:'["原产地","关税","消费税"]', sr:89.4, lu:'2025-11-26', mt:'酒水业务部' },
@@ -1311,23 +1327,48 @@ export async function getHsSubheadings(heading?: string) {
 }
 
 export async function getDashboardStats() {
-  const gmv = (await queryAll(`SELECT SUM(amount) as s FROM orders WHERE status='completed'`))[0]?.s || 0
-  const activeOrders = (await queryAll(`SELECT COUNT(*) as c FROM orders WHERE status!='completed'`))[0]?.c || 0
-  const cleared = (await queryAll(`SELECT COUNT(*) as c FROM customs_clearances WHERE status='cleared'`))[0]?.c || 0
-  const totalClear = (await queryAll(`SELECT COUNT(*) as c FROM customs_clearances`))[0]?.c || 1
+  const [gmvRow, activeRow, clearRow, totalClearRow, succRow, totalOrdersRow, delayRow, loadRow, delayLogRow, activeOverrideRow, succOverrideRow] = await Promise.all([
+    queryAll(`SELECT SUM(amount) as s FROM orders WHERE status='completed'`),
+    queryAll(`SELECT COUNT(*) as c FROM orders WHERE status!='completed'`),
+    queryAll(`SELECT COUNT(*) as c FROM customs_clearances WHERE status='cleared'`),
+    queryAll(`SELECT COUNT(*) as c FROM customs_clearances`),
+    queryAll(`SELECT COUNT(*) as c FROM orders WHERE status='completed'`),
+    queryAll(`SELECT COUNT(*) as c FROM orders`),
+    queryAll(`SELECT value as v FROM system_metrics WHERE key='data_sync_delay'`),
+    queryAll(`SELECT value as v FROM system_metrics WHERE key='system_load'`),
+    queryAll(`SELECT COUNT(*) as c FROM logistics WHERE (actual_time>estimated_time AND actual_time>0) OR status IN ('customs')`),
+    queryAll(`SELECT value as v FROM system_metrics WHERE key='active_orders'`),
+    queryAll(`SELECT value as v FROM system_metrics WHERE key='success_rate'`)
+  ])
+  const gmv = gmvRow[0]?.s || 0
+  const activeOrdersRaw = activeRow[0]?.c || 0
+  const cleared = clearRow[0]?.c || 0
+  const totalClear = totalClearRow[0]?.c || 1
   const customsRate = totalClear ? (cleared * 100) / totalClear : 0
-  const held = (await queryAll(`SELECT COUNT(*) as c FROM customs_clearances WHERE status IN ('held')`))[0]?.c || 0
-  const successOrders = (await queryAll(`SELECT COUNT(*) as c FROM orders WHERE status='completed'`))[0]?.c || 0
-  const totalOrders = (await queryAll(`SELECT COUNT(*) as c FROM orders`))[0]?.c || 1
-  const successRate = totalOrders ? (successOrders * 100) / totalOrders : 0
-  const dataSyncDelay = (await queryAll(`SELECT value as v FROM system_metrics WHERE key='data_sync_delay'`))[0]?.v || 0
-  const systemLoad = (await queryAll(`SELECT value as v FROM system_metrics WHERE key='system_load'`))[0]?.v || 0
-  return { gmv, activeOrders, customsRate, logisticsException: held, successRate, dataSyncDelay, systemLoad }
+  const logisticsException = delayLogRow[0]?.c || 0
+  const successOrders = succRow[0]?.c || 0
+  const totalOrders = totalOrdersRow[0]?.c || 1
+  const successRateRaw = totalOrders ? (successOrders * 100) / totalOrders : 0
+  const dataSyncDelay = delayRow[0]?.v || 0
+  const systemLoad = loadRow[0]?.v || 0
+  const activeOverride = activeOverrideRow[0]?.v
+  const succOverride = succOverrideRow[0]?.v
+  const activeOrders = (activeOverride && activeOverride > 0) ? activeOverride : activeOrdersRaw
+  const successRate = (succOverride && succOverride > 0) ? succOverride : successRateRaw
+  return { gmv, activeOrders, customsRate, logisticsException, successRate, dataSyncDelay, systemLoad }
 }
 
 export async function getCategoryDistribution() {
   const rows = await queryAll(`SELECT category as name, COUNT(*)*100.0/(SELECT COUNT(*) FROM orders) as value FROM orders GROUP BY category`)
-  return rows.map(r=>({ name: r.name, value: Number(r.value.toFixed(1)), color: r.name==='beauty'?'#00F0FF':r.name==='wine'?'#2E5CFF':r.name==='appliance'?'#10B981':'#F59E0B' }))
+  const palette: Record<string,string> = {
+    beauty: '#00F0FF',
+    wine: '#2E5CFF',
+    appliance: '#10B981',
+    electronics: '#F59E0B',
+    textile: '#F472B6',
+    general: '#A855F7'
+  }
+  return rows.map(r=>({ name: r.name, value: Number(r.value.toFixed(1)), color: palette[r.name] || '#22D3EE' }))
 }
 
 export async function getProcessFunnel() {
@@ -1346,16 +1387,30 @@ export async function getProcessFunnel() {
   return res
 }
 
+export async function getFunnelTransitions() {
+  const total = (await queryAll(`SELECT COUNT(*) as c FROM orders`))[0]?.c || 0
+  const toCustoms = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id)`))[0]?.c || 0
+  const toLogistics = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id) AND EXISTS(SELECT 1 FROM logistics l WHERE l.order_id=o.id)`))[0]?.c || 0
+  const toPayment = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM logistics l WHERE l.order_id=o.id) AND EXISTS(SELECT 1 FROM settlements s WHERE s.order_id=o.id)`))[0]?.c || 0
+  const toWarehouse = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM settlements s WHERE s.order_id=o.id AND s.status='completed') AND EXISTS(SELECT 1 FROM logistics l WHERE l.order_id=o.id AND l.status='completed')`))[0]?.c || 0
+  const data = [
+    { from:'订单', to:'通关', count: toCustoms },
+    { from:'通关', to:'物流', count: toLogistics },
+    { from:'物流', to:'支付', count: toPayment },
+    { from:'支付', to:'入库', count: toWarehouse }
+  ]
+  return data.map(d=>({ ...d, total }))
+}
+
 export async function getEnterpriseSeries() {
-  const rows = await queryAll(`
-    SELECT substr(created_at,12,2) as hour, COUNT(*) as cnt,
-           SUM(CASE WHEN status!='completed' THEN 1 ELSE 0 END) as active
-    FROM orders
-    WHERE created_at >= datetime('now','-1 day')
-    GROUP BY hour
-    ORDER BY hour
-  `)
-  return rows.map(r=>({ time: r.hour+':00', online: r.cnt, active: r.active }))
+  const onlineOverrideRow = await queryAll(`SELECT value as v FROM system_metrics WHERE key='online_enterprises'`)
+  const activeOverrideRow = await queryAll(`SELECT value as v FROM system_metrics WHERE key='active_orders'`)
+  const onlineRawRow = await queryAll(`SELECT COUNT(*) as c FROM enterprises WHERE status!='blocked'`)
+  const activeRawRow = await queryAll(`SELECT COUNT(*) as c FROM orders WHERE status!='completed'`)
+  const online = (onlineOverrideRow[0]?.v && onlineOverrideRow[0]?.v > 0) ? onlineOverrideRow[0]?.v : (onlineRawRow[0]?.c || 0)
+  const active = (activeOverrideRow[0]?.v && activeOverrideRow[0]?.v > 0) ? activeOverrideRow[0]?.v : (activeRawRow[0]?.c || 0)
+  const hours = Array.from({ length: 12 }, (_, i) => String(i*2).padStart(2,'0')+':00')
+  return hours.map(h => ({ time: h, online, active }))
 }
 
 export async function getSettlements() {
@@ -1460,20 +1515,31 @@ export async function getAlgorithms(q: string = '', offset: number = 0, limit: n
   if (q) qs.set('q', q)
   qs.set('offset', String(offset))
   qs.set('limit', String(limit))
-  const res = await fetch(`/api/algorithms?${qs.toString()}`)
-  const data = await res.json()
-  return (Array.isArray(data) ? data : []).map((r: any) => ({
-    ...r,
-    features: Array.isArray(r.features) ? r.features : (() => { try { return JSON.parse(r.features || '[]') } catch { return [] } })()
-  }))
+  try {
+    const res = await fetch(`/api/algorithms?${qs.toString()}`)
+    const data = await res.json()
+    const arr = Array.isArray(data) ? data : []
+    if (arr.length) {
+      return arr.map((r: any) => ({
+        ...r,
+        features: Array.isArray(r.features) ? r.features : (() => { try { return JSON.parse(r.features || '[]') } catch { return [] } })()
+      }))
+    }
+  } catch (_) {}
+  const rows = await queryAll(`SELECT id, name, category, version, status, accuracy, performance, usage, description, features, last_updated as lastUpdated, author, code FROM algorithms ORDER BY id LIMIT $limit OFFSET $offset`,{ $limit: limit, $offset: offset })
+  return rows.map((r:any)=> ({ ...r, features: Array.isArray(r.features) ? r.features : (()=>{ try { return JSON.parse(r.features||'[]') } catch { return [] } })() }))
 }
 
 export async function countAlgorithms(q: string = '') {
   const qs = new URLSearchParams()
   if (q) qs.set('q', q)
-  const res = await fetch(`/api/algorithms/count?${qs.toString()}`)
-  const json = await res.json()
-  return json.count || 0
+  try {
+    const res = await fetch(`/api/algorithms/count?${qs.toString()}`)
+    const json = await res.json()
+    if (json?.count) return json.count
+  } catch (_) {}
+  const rows = await queryAll(`SELECT COUNT(*) as c FROM algorithms`)
+  return rows[0]?.c || 0
 }
 
 export async function getBusinessModels(q: string = '', category: string = 'all', offset: number = 0, limit: number = 50) {
@@ -1482,18 +1548,27 @@ export async function getBusinessModels(q: string = '', category: string = 'all'
   if (category) qs.set('category', category)
   qs.set('offset', String(offset))
   qs.set('limit', String(limit))
-  const res = await fetch(`/api/business_models?${qs.toString()}`)
-  const data = await res.json()
-  return data
+  try {
+    const res = await fetch(`/api/business_models?${qs.toString()}`)
+    const data = await res.json()
+    const arr = Array.isArray(data) ? data : []
+    if (arr.length) return arr
+  } catch (_) {}
+  const rows = await queryAll(`SELECT id, name, category, version, status, enterprises, orders, description, scenarios, compliance, chapters, success_rate as successRate, last_updated as lastUpdated, maintainer FROM business_models ORDER BY last_updated DESC LIMIT $limit OFFSET $offset`,{ $limit: limit, $offset: offset })
+  return rows
 }
 
 export async function countBusinessModels(q: string = '', category: string = 'all') {
   const qs = new URLSearchParams()
   if (q) qs.set('q', q)
   if (category) qs.set('category', category)
-  const res = await fetch(`/api/business_models/count?${qs.toString()}`)
-  const json = await res.json()
-  return json.count || 0
+  try {
+    const res = await fetch(`/api/business_models/count?${qs.toString()}`)
+    const json = await res.json()
+    if (json?.count) return json.count
+  } catch (_) {}
+  const rows = await queryAll(`SELECT COUNT(*) as c FROM business_models`)
+  return rows[0]?.c || 0
 }
 
 export async function getBusinessModelForOrder(orderId: string) {
@@ -1609,6 +1684,44 @@ export async function logAlgoTest(algoId: string, input: string, status: string,
 export async function getAlgoTestHistory(limit: number = 50) {
   await ensureAlgoTestLogs()
   return queryAll(`SELECT algo_id as algoId, ts, input, status, duration_ms as durationMs FROM algo_test_logs ORDER BY ts DESC LIMIT $limit`,{ $limit: limit })
+}
+
+export async function insertCaseTrace(trace: {
+  id: string,
+  orderId?: string,
+  modelName: string,
+  input: string,
+  output: string,
+  businessOutcome: string,
+  businessImpactValue?: number,
+  confidence?: number,
+  latencyMs?: number,
+  hsCode?: string,
+  hsChapter?: string,
+  customsStatus?: string,
+  logisticsStatus?: string,
+  settlementStatus?: string
+}) {
+  await ensureCaseTracesSeed()
+  await exec(`INSERT INTO case_traces(id, ts, order_id, input_snapshot, model_name, output_result, business_outcome, business_impact_value, confidence, latency_ms, hs_code, hs_chapter, compliance_score, customs_status, logistics_status, settlement_status)
+              VALUES($id, $ts, $oid, $in, $mn, $out, $bo, $bv, $cf, $lat, $hs, $chap, $comp, $cs, $ls, $ss)`,{
+    $id: trace.id,
+    $ts: new Date().toISOString(),
+    $oid: trace.orderId || '',
+    $in: trace.input,
+    $mn: trace.modelName,
+    $out: trace.output,
+    $bo: trace.businessOutcome,
+    $bv: trace.businessImpactValue || 0,
+    $cf: trace.confidence || 95,
+    $lat: trace.latencyMs || 120,
+    $hs: trace.hsCode || '',
+    $chap: trace.hsChapter || '',
+    $comp: 0,
+    $cs: trace.customsStatus || '',
+    $ls: trace.logisticsStatus || '',
+    $ss: trace.settlementStatus || ''
+  })
 }
 
 export async function searchCaseTraces(params: { q?: string; outcome?: string; model?: string; hsChapter?: string; offset?: number; limit?: number }) {
@@ -1885,64 +1998,36 @@ export async function deleteBusinessModel(id: string) {
 
 // Enterprises dataset
 export async function getEnterprisesPaged(q: string, type: string, status: string, category: string, region: string, offset: number, limit: number) {
-  const where: string[] = []
-  const params: any = { $offset: offset, $limit: limit }
-  if (q) { where.push(`(name LIKE $q OR reg_no LIKE $q OR region LIKE $q)`); params.$q = `%${q}%` }
-  if (type && type !== 'all') { where.push(`type = $type`); params.$type = type }
-  if (status && status !== 'all') { where.push(`status = $status`); params.$status = status }
-  if (category && category !== 'all') { where.push(`category = $category`); params.$category = category }
-  if (region && region !== 'all') { where.push(`region = $region`); params.$region = region }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return queryAll(`SELECT id, reg_no as regNo, name, type, category, region, status, compliance, service_eligible as eligible, active_orders as activeOrders, last_active as lastActive FROM enterprises ${whereSql} ORDER BY last_active DESC LIMIT $limit OFFSET $offset`, params)
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (type) qs.set('type', type)
+  if (status) qs.set('status', status)
+  if (category) qs.set('category', category)
+  if (region) qs.set('region', region)
+  qs.set('offset', String(offset))
+  qs.set('limit', String(limit))
+  const res = await fetch(`/api/enterprises?${qs.toString()}`)
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
 }
 
 export async function countEnterprises(q: string, type: string, status: string, category: string, region: string) {
-  const where: string[] = []
-  const params: any = {}
-  if (q) { where.push(`(name LIKE $q OR reg_no LIKE $q OR region LIKE $q)`); params.$q = `%${q}%` }
-  if (type && type !== 'all') { where.push(`type = $type`); params.$type = type }
-  if (status && status !== 'all') { where.push(`status = $status`); params.$status = status }
-  if (category && category !== 'all') { where.push(`category = $category`); params.$category = category }
-  if (region && region !== 'all') { where.push(`region = $region`); params.$region = region }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const rows = await queryAll(`SELECT COUNT(*) as c FROM enterprises ${whereSql}`, params)
-  return rows[0]?.c || 0
+  const qs = new URLSearchParams()
+  if (q) qs.set('q', q)
+  if (type) qs.set('type', type)
+  if (status) qs.set('status', status)
+  if (category) qs.set('category', category)
+  if (region) qs.set('region', region)
+  const res = await fetch(`/api/enterprises/count?${qs.toString()}`)
+  const json = await res.json()
+  return json.count || 0
 }
 
 export async function batchImportEnterprises(data: any[]) {
-  const db = await getDatabase()
-  db.run('BEGIN TRANSACTION')
-  try {
-    for (const row of data) {
-      const id = row.id || 'E' + Math.floor(Math.random() * 1000000)
-      const reg = row.regNo || row.reg_no || 'REG' + Math.floor(Math.random() * 1000000)
-      const name = row.name || 'Unknown Enterprise'
-      const type = row.type || 'importer'
-      const cat = row.category || 'general'
-      const region = row.region || 'Unknown'
-      const status = row.status || 'active'
-      const compliance = parseFloat(row.compliance) || 80
-      const eligible = row.eligible ? 1 : (row.service_eligible ? 1 : 0)
-      const activeOrders = parseInt(row.activeOrders || row.active_orders || '0')
-      const lastActive = row.lastActive || row.last_active || new Date().toISOString()
-      
-      db.run(`INSERT INTO enterprises(id,reg_no,name,type,category,region,status,compliance,service_eligible,active_orders,last_active) 
-              VALUES($id,$reg,$name,$type,$cat,$region,$status,$comp,$elig,$act,$last)
-              ON CONFLICT(id) DO UPDATE SET
-                reg_no=$reg, name=$name, type=$type, category=$cat, region=$region, status=$status, 
-                compliance=$comp, service_eligible=$elig, active_orders=$act, last_active=$last`,{
-        $id:id,$reg:reg,$name:name,$type:type,$cat:cat,$region:region,$status:status,
-        $comp:compliance,$elig:eligible,$act:activeOrders,$last:lastActive
-      })
-    }
-    db.run('COMMIT')
-    persist(db)
-    return { success: true, count: data.length }
-  } catch (e) {
-    db.run('ROLLBACK')
-    console.error('Batch import failed', e)
-    return { success: false, error: String(e) }
-  }
+  const res = await fetch('/api/enterprises/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+  const json = await res.json()
+  if (json?.ok) return { success: true, count: json.count || 0 }
+  return { success: false, error: 'batch import failed' }
 }
 
 export async function getTimelineEvents() {
@@ -2046,6 +2131,11 @@ export async function updatePortCongestion(port: string, index: number) {
 export async function getTodayGMV() {
   const rows = await queryAll(`SELECT IFNULL(SUM(amount),0) as gmv FROM trade_stream WHERE date(ts)=date('now')`)
   return Math.round((rows[0]?.gmv || 0) * 100) / 100
+}
+
+export async function getTradesPerMinute(minutes: number = 1) {
+  const rows = await queryAll(`SELECT COUNT(*) as c FROM trade_stream WHERE ts >= datetime('now', '-' || $m || ' minutes')`, { $m: minutes })
+  return rows[0]?.c || 0
 }
 
 export async function pushTradeEvents(count: number) {

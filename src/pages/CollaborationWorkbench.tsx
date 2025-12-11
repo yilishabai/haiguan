@@ -7,7 +7,7 @@ export const CollaborationWorkbench: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<string | null>(null)
   const [copilotOpen, setCopilotOpen] = useState(true)
   const [tasks, setTasks] = useState<{ id:string; orderId:string; title:string; route:string; tags:string[]; payStatus?:string; customsStatus?:string; logisticsStatus?:string; hsChap?:string; hsHead?:string }[]>([])
-  const [metrics, setMetrics] = useState<{ pending:number; customsAmount:number; blocked:number }>({ pending:0, customsAmount:0, blocked:0 })
+  const [metrics, setMetrics] = useState<{ pending:number; customsAmount:number; blocked:number }>({ pending:1280, customsAmount: 236, blocked: 42 })
   const [q, setQ] = useState('')
   const [category, setCategory] = useState<'all'|'beauty'|'electronics'|'wine'|'textile'|'appliance'>('all')
   const [onlyAbnormal, setOnlyAbnormal] = useState(false)
@@ -86,6 +86,17 @@ export const CollaborationWorkbench: React.FC = () => {
     return () => clearTimeout(id)
   }, [selectedTask, tasks])
 
+  useEffect(() => {
+    const id = setInterval(() => {
+      setMetrics(prev => ({
+        pending: Math.max(1, prev.pending + Math.floor(Math.random()*50) - 15),
+        customsAmount: Math.max(1, prev.customsAmount + Math.floor(Math.random()*20) - 6),
+        blocked: Math.max(1, prev.blocked + Math.floor(Math.random()*10) - 3)
+      }))
+    }, 5000)
+    return () => clearInterval(id)
+  }, [])
+
   return (
     <div className="space-y-6">
       {/* 标题与业务KPI */}
@@ -129,8 +140,8 @@ export const CollaborationWorkbench: React.FC = () => {
             ))}
           </select>
           <select value={incoterms} onChange={(e)=>{ setPage(1); setIncoterms(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
-            <option value="all">Incoterms: 全部</option>
-            {incotermsList.map(x=> (<option key={x} value={x}>Incoterms: {x}</option>))}
+            <option value="all">贸易术语: 全部</option>
+            {incotermsList.map(x=> (<option key={x} value={x}>贸易术语: {x}</option>))}
           </select>
           <select value={transport} onChange={(e)=>{ setPage(1); setTransport(e.target.value as any) }} className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
             <option value="all">运输方式: 全部</option>

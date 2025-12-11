@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useContext } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
 import { getSettlementsPaged, countSettlements, upsertSettlement, deleteSettlement, getLinkableOrders, enqueueJob, applyBusinessModel, queryAll, analyzeFxRisk } from '../lib/sqlite'
 import { CreditCard, ShieldCheck, AlertTriangle, TrendingDown } from 'lucide-react'

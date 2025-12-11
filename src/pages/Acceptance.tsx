@@ -4,7 +4,6 @@ import {
   CheckCircle, 
   Clock, 
   AlertTriangle, 
-  Users, 
   Building, 
   BarChart3,
   TrendingUp,
@@ -15,12 +14,11 @@ import {
   Search,
   Filter,
   Calendar,
-  MapPin,
   Globe,
   Shield,
   Zap
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
 import { getSettings, getApplications, getAcceptanceCriteria, getReviewWorkflows } from '../lib/sqlite';
 
@@ -119,7 +117,8 @@ export const Acceptance: React.FC = () => {
         const delay = Math.max(500, parseInt(val) || 3000);
         await load();
         timer = setInterval(load, delay);
-      } catch (_) {
+      } catch (e){
+        console.warn(e);
         await load();
         timer = setInterval(load, 3000);
       }

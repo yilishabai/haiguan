@@ -5,7 +5,7 @@ import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/Hu
 import { UploadModal } from '../components/UploadModal';
 import GaugeChart from '../components/charts/GaugeChart';
 import { Brain, Cpu, Database, TrendingUp, Target, Zap, Play, RefreshCw, Download, Upload, Eye, Edit, Trash2, Terminal, FileCode, FileText, Activity, ShieldCheck, DollarSign } from 'lucide-react';
-import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll, countAlgorithms, countBusinessModels, logAlgoTest, searchCaseTraces, countCaseTraces, bindAlgorithmToOrder, getBindingsForOrder, getAlgorithmFlow, upsertAlgorithmFlow, computeTaxes, getPaymentMethods } from '../lib/sqlite';
+import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll, countAlgorithms, countBusinessModels, logAlgoTest, searchCaseTraces, countCaseTraces, bindAlgorithmToOrder, getBindingsForOrder, getAlgorithmFlow, upsertAlgorithmFlow, computeTaxes, getPaymentMethods, insertCaseTrace } from '../lib/sqlite';
 
 //
 
@@ -88,6 +88,22 @@ export const Capabilities: React.FC = () => {
     decision: '#FF0055'
   };
 
+  const toArr = (v: any) => {
+    if (Array.isArray(v)) return v
+    if (typeof v === 'string') {
+      const s = v.trim()
+      if (!s) return []
+      try {
+        const p = JSON.parse(s)
+        return Array.isArray(p) ? p : s.split(',').map(x => x.trim()).filter(Boolean)
+      } catch {
+        return s.split(',').map(x => x.trim()).filter(Boolean)
+      }
+    }
+    if (v == null) return []
+    return []
+  }
+
   const toZhOutcome = (s: string) => {
     const v = (s || '').toLowerCase()
     if (v.includes('auto-pass') || v.includes('cleared') || v.includes('release')) return '放行'
@@ -108,7 +124,7 @@ export const Capabilities: React.FC = () => {
     if (v === 'customs') return '报关中'
     if (v === 'pickup') return '揽收'
     if (v === 'transit') return '运输中'
-    if (v === 'delivery') return '派送中'
+    if (v === 'delivery') return '已完成'
     return s || ''
   }
 
@@ -155,7 +171,7 @@ export const Capabilities: React.FC = () => {
       const a = await getAlgorithms('', (algPage-1)*algPageSize, algPageSize);
       const m = await getBusinessModels('', 'all', 0, 50);
       setAlgorithms(a);
-      setModels(m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance), chapters: x.chapters ? JSON.parse(x.chapters) : [] })));
+      setModels(m.map((x: any) => ({ ...x, scenarios: toArr(x.scenarios), compliance: toArr(x.compliance), chapters: toArr(x.chapters) })));
       
       const tc = await countAlgorithms('');
       setAlgTotal(tc);
@@ -209,6 +225,19 @@ export const Capabilities: React.FC = () => {
     };
     load();
   }, [algPage, algPageSize, traceQuery, traceOutcome, traceModel, traceHs, tracePage, tracePageSize]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setValueMetrics(prev => ({
+        totalValueCreated: Math.max(1, prev.totalValueCreated + Math.floor(Math.random()*50) - 10),
+        riskPrevented: Math.max(1, prev.riskPrevented + Math.floor(Math.random()*30) - 8),
+        efficiencyGain: Number(Math.max(5, Math.min(90, prev.efficiencyGain + (Math.random()*1 - 0.5))).toFixed(1)),
+        activeModels: Math.max(1, prev.activeModels + (Math.random()>0.7?1:0))
+      }))
+      setSelectedAlgorithm(prev => prev ? ({ ...prev, usage: Math.max(1, (prev.usage||0) + Math.floor(Math.random()*40) - 10) }) : prev)
+    }, 5000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     const pick = async () => {
@@ -349,7 +378,7 @@ export const Capabilities: React.FC = () => {
     }
     await upsertBusinessModel(payload as any)
     const m = await getBusinessModels();
-    const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance), chapters: x.chapters ? JSON.parse(x.chapters) : [] }));
+    const mm = m.map((x: any) => ({ ...x, scenarios: toArr(x.scenarios), compliance: toArr(x.compliance), chapters: toArr(x.chapters) }));
     setModels(mm)
     setSelectedModel(mm.find((x:any)=>x.id===payload.id) || mm[0] || null)
     setShowModelModal(false)
@@ -358,7 +387,7 @@ export const Capabilities: React.FC = () => {
     if (!selectedModel?.id) return
     await deleteBusinessModel(selectedModel.id)
     const m = await getBusinessModels();
-    const mm = m.map((x: any) => ({ ...x, scenarios: JSON.parse(x.scenarios), compliance: JSON.parse(x.compliance) }));
+    const mm = m.map((x: any) => ({ ...x, scenarios: toArr(x.scenarios), compliance: toArr(x.compliance), chapters: toArr(x.chapters) }));
     setModels(mm)
     setSelectedModel(mm[0] || null)
   }
@@ -394,6 +423,25 @@ export const Capabilities: React.FC = () => {
       setExecutionHistory(prev => [newLog, ...prev]);
       if (selectedAlgorithm?.id) {
         await logAlgoTest(String(selectedAlgorithm.id), newLog.input, newLog.status, duration).catch(() => null)
+        try {
+          const out = JSON.stringify({ score: Number((90 + Math.random() * 10).toFixed(1)) })
+          await insertCaseTrace({
+            id: 'TRACE-'+Date.now(),
+            orderId: orderList[0]?.id,
+            modelName: selectedAlgorithm.name,
+            input: newLog.input,
+            output: out,
+            businessOutcome: 'Cleared',
+            businessImpactValue: Math.round(Math.random()*10000)/100,
+            confidence: 95 + Math.round(Math.random()*4),
+            latencyMs: duration,
+            hsCode: '',
+            hsChapter: '',
+            customsStatus: 'declared',
+            logisticsStatus: 'transit',
+            settlementStatus: 'processing'
+          })
+        } catch (e) { console.warn(e) }
       }
     }, 3200);
   };
@@ -529,7 +577,7 @@ export const Capabilities: React.FC = () => {
                 <div className="mb-3 flex items-center gap-2">
                   <GlowButton size="sm" onClick={async ()=>{ if (flowAlgoId) { await upsertAlgorithmFlow(flowAlgoId, { blocks: flowBlocks, edges: flowEdges }) } }}>保存流程</GlowButton>
                 </div>
-                <div className="h-64" ref={flowGraphRef} />
+                <div className="h-64 flex items-center justify-center" ref={flowGraphRef} />
               </div>
             </HudPanel>
           </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import * as echarts from 'echarts'
-import worldUrl from 'echarts-countries-js/new-world.geojson?url'
+// 保持无依赖导入，使用远程资源作为回退
 
 interface LogisticsMapProps {
   height?: number | string
@@ -21,47 +21,58 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
       chartRef.current = chart
 
       try {
-        const providers = [
-          worldUrl,
-          'https://fastly.jsdelivr.net/npm/echarts@5/map/json/world.json',
-          'https://unpkg.com/echarts@5/map/json/world.json'
-        ]
-        for (const url of providers) {
+        const cached = localStorage.getItem('world_geojson')
+        if (cached) {
           try {
-            const resp = await fetch(url)
-            if (resp.ok) {
-              const world = await resp.json()
-              echarts.registerMap('world', world)
-              break
-            }
+            const json = JSON.parse(cached)
+            echarts.registerMap('world', json)
           } catch (_) {}
         }
-      } catch (e) {}
 
-      const china = { name: 'China', coord: [116.4074, 39.9042] }
-      const shanghai = { name: 'Shanghai Port', coord: [121.4917, 31.2333] }
-      const ningbo = { name: 'Ningbo Port', coord: [121.549, 29.868] }
-      const shenzhen = { name: 'Shenzhen Port', coord: [114.0579, 22.5431] }
-      const tianjin = { name: 'Tianjin Port', coord: [117.200, 39.085] }
+        if (!echarts.getMap('world')) {
+          const worldProviders = [
+            'https://geo.datav.aliyun.com/areas/bound/geojson/world.json',
+            'https://echarts.apache.org/examples/data/asset/geo/world.json',
+            'https://fastly.jsdelivr.net/npm/echarts/map/json/world.json',
+            'https://unpkg.com/echarts/map/json/world.json'
+          ]
+          for (const url of worldProviders) {
+            try {
+              const resp = await fetch(url, { cache: 'no-cache' })
+              if (resp.ok) {
+                const worldMap = await resp.json()
+                echarts.registerMap('world', worldMap)
+                try { localStorage.setItem('world_geojson', JSON.stringify(worldMap)) } catch (_) {}
+                break
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
 
-      const rotterdam = { name: 'Rotterdam', coord: [4.4777, 51.9244], tag: 'Shipping: Beauty Products' }
-      const hamburg = { name: 'Hamburg', coord: [9.9937, 53.5511], tag: 'Customs: Liquor' }
-      const tokyo = { name: 'Tokyo', coord: [139.6917, 35.6895], tag: 'Shipping: Appliances' }
-      const osaka = { name: 'Osaka', coord: [135.5022, 34.6937], tag: 'Shipping: Beauty Products' }
+      const beijing = { name: '北京', coord: [116.4074, 39.9042] }
+      const shanghai = { name: '上海', coord: [121.4917, 31.2333] }
+      const shenzhen = { name: '深圳', coord: [114.0579, 22.5431] }
+      const guangzhou = { name: '广州', coord: [113.2644, 23.1291] }
+      const chengdu = { name: '成都', coord: [104.0665, 30.5728] }
+      const xiAn = { name: '西安', coord: [108.9398, 34.3416] }
+      const hangzhou = { name: '杭州', coord: [120.1551, 30.2741] }
+      const wuhan = { name: '武汉', coord: [114.3054, 30.5928] }
+      const tianjin = { name: '天津', coord: [117.2, 39.085] }
 
-      const destinations = [shanghai, ningbo, shenzhen, tianjin]
-      const origins = [rotterdam, hamburg, tokyo, osaka]
+      const hubs = [beijing, shanghai, shenzhen, guangzhou]
+      const nodes = [chengdu, xiAn, hangzhou, wuhan, tianjin]
 
-      const defaultLines = origins.flatMap((o) =>
-        destinations.map((d) => ({
+      const defaultLines = nodes.flatMap((o) =>
+        hubs.map((d) => ({
           coords: [o.coord, d.coord],
           value: 1,
-          tooltip: `${o.tag} → ${d.name}`
+          tooltip: `${o.name} → ${d.name}`
         }))
       )
 
-      const portScatter = destinations.map((p) => ({ name: p.name, value: p.coord }))
-      const originScatter = origins.map((p) => ({ name: p.name, value: p.coord }))
+      const hubScatter = hubs.map((p) => ({ name: p.name, value: p.coord }))
+      const nodeScatter = nodes.map((p) => ({ name: p.name, value: p.coord }))
 
       const hasWorld = !!echarts.getMap('world')
 
@@ -102,14 +113,14 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
               effect: {
                 show: true,
                 period: 4,
-                trailLength: 0.2,
+                trailLength: 0.1,
                 symbolSize: 4
               },
               lineStyle: {
                 color: '#00F0FF',
                 width: 1.5,
                 opacity: 0.8,
-                curveness: 0.2
+                curveness: 0.05
               },
               progressive: 4000,
               data: (flows.length ? flows.map(f=>({ coords:[f.from, f.to], value:1, tooltip: f.tooltip })) : defaultLines)
@@ -121,7 +132,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
               symbolSize: 6,
               rippleEffect: { brushType: 'stroke' },
               itemStyle: { color: '#2E5CFF' },
-              data: originScatter
+              data: nodeScatter
             },
             {
               type: 'effectScatter',
@@ -130,7 +141,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
               symbolSize: 8,
               rippleEffect: { brushType: 'stroke' },
               itemStyle: { color: '#10B981' },
-              data: portScatter
+              data: hubScatter
             }
           ]
         }
@@ -193,4 +204,3 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
 }
 
 export default LogisticsMap
-

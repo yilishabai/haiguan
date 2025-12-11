@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useContext } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { HudPanel, GlowButton } from '../components/ui/HudPanel'
 import { getInventoryPaged, countInventory, upsertInventory, deleteInventory, analyzeWarehouse } from '../lib/sqlite'
 import { Factory, Package, ArrowDownCircle, TrendingUp, Layers } from 'lucide-react'

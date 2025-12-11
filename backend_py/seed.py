@@ -105,4 +105,48 @@ def seed_users():
 def seed_all():
     """统一种子入口"""
     seed_users()
+    try:
+        session = SessionLocal()
+        from backend_py.models.enterprises import Enterprise
+        import random
+        from datetime import datetime, timedelta
+        cnt = session.query(Enterprise).count()
+        if cnt == 0:
+            names = [
+                '上海美妆集团有限公司','深圳电子科技有限公司','广州食品进出口公司','宁波服装贸易集团','青岛机械制造有限公司',
+                '杭州跨境消费品集团','成都家居电器股份','天津酒类进出口公司','厦门贸易发展有限公司','苏州智能制造股份',
+                '重庆轻工进出口公司','南京纺织品有限公司','武汉家电集团','郑州食品流通有限公司','西安电子信息股份',
+                '济南葡萄酒贸易有限公司','福州小家电有限公司','合肥纺织进出口公司','大连机械制造集团','无锡新材料科技'
+            ]
+            regions = ['上海','深圳','广州','宁波','青岛','天津','厦门','成都','重庆','苏州','南京','武汉','郑州','西安','济南','福州','合肥','大连','无锡']
+            categories = ['beauty','electronics','wine','textile','appliance']
+            types = ['importer','exporter','both']
+            statuses = ['active','inactive','blocked']
+            base = datetime.utcnow()
+            rows = []
+            for i in range(1, 201):
+                name = random.choice(names)
+                region = random.choice(regions)
+                category = random.choice(categories)
+                ent = Enterprise(
+                    id=f'E{i:05d}',
+                    reg_no=f'{region[:2]}-{i:05d}',
+                    name=name,
+                    type=random.choice(types),
+                    category=category,
+                    region=region,
+                    status=random.choices(statuses, weights=[0.8,0.15,0.05], k=1)[0],
+                    compliance=round(random.uniform(80, 99.9), 1),
+                    service_eligible=random.choice([0,1]),
+                    active_orders=random.randint(0, 500),
+                    last_active=base - timedelta(days=random.randint(0, 60))
+                )
+                rows.append(ent)
+            session.add_all(rows)
+            session.commit()
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
-import { Package, Truck, CreditCard, Shield, Factory, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Clock, DollarSign, Globe, BarChart3, X, FileText, Activity, Eye, Zap, Layers } from 'lucide-react';
+import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Package, Truck, CreditCard, Shield, Factory, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Clock, DollarSign, BarChart3, X, FileText, Activity, Zap } from 'lucide-react';
 import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
 import { BeautyDemo } from '../components/BeautyDemo';
 import { getSettlements, getCustomsClearances, getLogisticsData, getPaymentMethods, getInventoryData, queryAll, updateSettlementStatus, updateCustomsStatus, getCollaborationFlows, createOrderFlow, advanceOrderFlow, getCollaborationInsights, predictDemand } from '../lib/sqlite';
@@ -276,7 +276,7 @@ export const Collaboration: React.FC = () => {
 
   const overviewData = overviewSeries;
 
-  const paymentPieData = paymentMethods.map((item, index) => ({
+  const paymentPieData = paymentMethods.map((item) => ({
     name: item.method,
     value: item.volume,
     amount: item.amount
@@ -746,7 +746,7 @@ export const Collaboration: React.FC = () => {
               <HudPanel className="p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">支付方式详情</h3>
                 <div className="space-y-4">
-                  {paymentMethods.map((payment, index) => (
+                  {paymentMethods.map((payment) => (
                     <div key={payment.method} className="p-3 bg-gray-800 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-white font-medium">{payment.method}</span>

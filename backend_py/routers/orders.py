@@ -29,7 +29,10 @@ def list_orders(q: str = '', status: str = 'all', offset: int = 0, limit: int = 
         'status': r.status,
         'amount': r.amount,
         'currency': r.currency,
-        'createdAt': r.created_at.isoformat()
+        'createdAt': r.created_at.isoformat(),
+        'incoterms': getattr(r, 'incoterms', '') or '',
+        'tradeTerms': getattr(r, 'trade_terms', '') or '',
+        'route': getattr(r, 'route', '') or ''
     } for r in rows]
 
 @router.get('/count')
@@ -51,6 +54,9 @@ def upsert_order(data: OrderIn, db: Session = Depends(get_db)):
         r.status = data.status
         r.amount = data.amount
         r.currency = data.currency
+        r.incoterms = data.incoterms or ''
+        r.trade_terms = data.trade_terms or ''
+        r.route = data.route or ''
     else:
         r = Order(
             id=data.id,
@@ -59,7 +65,10 @@ def upsert_order(data: OrderIn, db: Session = Depends(get_db)):
             category=data.category,
             status=data.status,
             amount=data.amount,
-            currency=data.currency
+            currency=data.currency,
+            incoterms=data.incoterms or '',
+            trade_terms=data.trade_terms or '',
+            route=data.route or ''
         )
         db.add(r)
     db.commit()

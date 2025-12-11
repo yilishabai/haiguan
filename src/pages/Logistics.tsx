@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useContext } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
 import { getLogisticsPaged, countLogistics, upsertLogistics, deleteLogistics, getLinkableOrders, enqueueJob, queryAll, optimizeRoute } from '../lib/sqlite'
 import { Truck, MapPin, Navigation, Leaf, Timer } from 'lucide-react'
@@ -119,8 +119,7 @@ export const Logistics: React.FC = () => {
                 <option value="pickup">已揽收</option>
                 <option value="transit">运输中</option>
                 <option value="customs">清关中</option>
-                <option value="delivery">派送中</option>
-                <option value="completed">已签收</option>
+                <option value="completed">已完成</option>
               </select>
             </div>
 

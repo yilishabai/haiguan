@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadialBarChart, RadialBar, PieChart, Pie, Cell } from 'recharts';
-import { HudPanel, DataCard, MetricDisplay, StatusBadge, GlowButton } from '../components/ui/HudPanel';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/HudPanel';
 import { 
   Target, 
-  TrendingUp, 
-  AlertTriangle, 
   CheckCircle, 
   Clock, 
   BarChart3,
-  Zap,
   Lightbulb,
-  Settings,
-  Award
+  Settings
 } from 'lucide-react';
 
 // 研发目标数据
@@ -197,14 +193,7 @@ export const Research: React.FC = () => {
     }
   };
 
-  const getMetricStatus = (current: number, target: number, isLowerBetter = false) => {
-    const ratio = current / target;
-    if (isLowerBetter) {
-      return ratio <= 1 ? 'excellent' : ratio <= 1.2 ? 'good' : ratio <= 1.5 ? 'warning' : 'error';
-    } else {
-      return ratio >= 1 ? 'excellent' : ratio >= 0.9 ? 'good' : ratio >= 0.8 ? 'warning' : 'error';
-    }
-  };
+  
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {

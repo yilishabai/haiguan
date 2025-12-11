@@ -140,6 +140,29 @@ def list_items(header_id: str, db: Session = Depends(get_db)):
         'vat': r.vat
     } for r in rows]
 
+@router.get('/items/batch')
+def list_items_batch(headerIds: str = '', db: Session = Depends(get_db)):
+    ids = [x for x in (headerIds or '').split(',') if x]
+    if not ids:
+        return []
+    rows = db.query(CustomsItem).filter(CustomsItem.header_id.in_(ids)).order_by(CustomsItem.header_id.asc(), CustomsItem.line_no.asc()).all()
+    return [{
+        'id': r.id,
+        'headerId': r.header_id,
+        'lineNo': r.line_no,
+        'hsCode': r.hs_code,
+        'name': r.name,
+        'spec': r.spec,
+        'unit': r.unit,
+        'qty': r.qty,
+        'unitPrice': r.unit_price,
+        'amount': r.amount,
+        'taxRate': r.tax_rate,
+        'tariff': r.tariff,
+        'excise': r.excise,
+        'vat': r.vat
+    } for r in rows]
+
 @router.post('/items')
 def insert_item(data: CustomsItemIn, db: Session = Depends(get_db)):
     r = CustomsItem(

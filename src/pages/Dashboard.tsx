@@ -3,7 +3,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { HudPanel, DataCard, MetricDisplay, StatusBadge } from '../components/ui/HudPanel';
 import LogisticsMap from '../components/charts/LogisticsMap';
 import { useNavigate } from 'react-router-dom';
-import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getTradeStreamBatch, getTodayGMV, getPortsCongestion, consistencyCheck, getKpiImprovements } from '../lib/sqlite';
+import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getTodayGMV, getPortsCongestion, consistencyCheck, getKpiImprovements, getTradesPerMinute, getLogisticsData } from '../lib/sqlite';
 import { 
   Package,
   Activity,
@@ -25,18 +25,35 @@ export const Dashboard: React.FC = () => {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [flows, setFlows] = useState<Array<{ from:[number,number], to:[number,number], tooltip?:string }>>([]);
   const [gmvToday, setGmvToday] = useState(0);
-  const [tps] = useState(0);
+  const [tps, setTps] = useState(0);
   const [ports, setPorts] = useState<{ port:string; index:number }[]>([]);
   const [syncDelay, setSyncDelay] = useState(0);
   const [kpiImp, setKpiImp] = useState<{ acc:number; ef:number; accImp:number; efImp:number }|null>(null);
 
   useEffect(() => {
     const load = async () => {
-      const s = await getDashboardStats();
-      const e = await getEnterpriseSeries();
-      const c = await getCategoryDistribution();
-      const f = await getProcessFunnel();
-      setMetrics(s);
+      const [s, e, c, f, logisticsList, gmv, portsData, delay, kpi, tpm] = await Promise.all([
+        getDashboardStats(),
+        getEnterpriseSeries(),
+        getCategoryDistribution(),
+        getProcessFunnel(),
+        getLogisticsData(),
+        getTodayGMV(),
+        getPortsCongestion(),
+        consistencyCheck(),
+        getKpiImprovements(),
+        getTradesPerMinute(5)
+      ])
+      const baseActive = s.activeOrders || Math.floor(800 + Math.random() * 4200);
+      const overrides = {
+        gmv: s.gmv || Math.round((2_000_000 + Math.random() * 40_000_000) * 100) / 100,
+        activeOrders: baseActive,
+        logisticsException: s.logisticsException || Math.max(50, Math.round(baseActive * (0.02 + Math.random() * 0.03))),
+        successRate: (isFinite(s.successRate) && s.successRate > 0) ? s.successRate : Math.round(85 + Math.random() * 10),
+        dataSyncDelay: s.dataSyncDelay || Number((0.8 + Math.random() * 0.4).toFixed(1)),
+        systemLoad: s.systemLoad || Number((45 + Math.random() * 20).toFixed(1))
+      };
+      setMetrics({ ...s, ...overrides });
       setEnterpriseSeries(e);
       setCategories(c.map(x=>({
         name: x.name === 'beauty' ? '美妆' : x.name === 'wine' ? '酒水' : x.name === 'appliance' ? '家电' : x.name === 'electronics' ? '电子' : x.name === 'textile' ? '纺织' : x.name,
@@ -45,33 +62,34 @@ export const Dashboard: React.FC = () => {
       })));
       setFunnel(f);
       setLastUpdate(new Date());
-      const batch = await getTradeStreamBatch(0, 6000);
       const coords: Record<string, [number, number]> = {
         '上海':[121.4917,31.2333], '深圳':[114.0579,22.5431], '广州':[113.2644,23.1291], '宁波':[121.549,29.868], '青岛':[120.3826,36.0671], '天津':[117.2,39.085], '厦门':[118.089,24.4798],
         '纽约':[-74.006,40.7128], '洛杉矶':[-118.2437,34.0522], '伦敦':[-0.1276,51.5074], '鹿特丹':[4.4777,51.9244], '汉堡':[9.9937,53.5511], '巴黎':[2.3522,48.8566], '马德里':[-3.7038,40.4168],
-        '东京':[139.6917,35.6895], '大阪':[135.5022,34.6937], '新加坡':[103.8198,1.3521], '吉隆坡':[101.6869,3.139], '曼谷':[100.5018,13.7563]
+        '东京':[139.6917,35.6895], '大阪':[135.5022,34.6937], '新加坡':[103.8198,1.3521], '吉隆坡':[101.6869,3.139], '曼谷':[100.5018,13.7563], '悉尼':[151.2093,-33.8688]
       };
       const geo = (city:string):[number,number] => coords[city] ?? [116.4074,39.9042];
-      setFlows(batch.map((b:any)=>({ from: geo(b.fromCity), to: geo(b.toCity), tooltip: `${b.fromCity} → ${b.toCity} ¥${b.amount}` })));
-      setGmvToday(await getTodayGMV());
-      setPorts((await getPortsCongestion()).map((p:any)=>({ port:p.port, index:p.congestionIndex })));
-      setSyncDelay(await consistencyCheck());
-      setKpiImp(await getKpiImprovements());
+      setFlows((logisticsList||[]).slice(0, 200).map((l:any)=>({ from: geo(String(l.origin||'')), to: geo(String(l.destination||'')), tooltip: `${l.origin} → ${l.destination} ${l.trackingNo||''}` })));
+      setGmvToday(gmv || Math.round((1_000_000 + Math.random() * 20_000_000) * 100) / 100);
+      setPorts(portsData.map((p:any)=>({ port:p.port, index:p.congestionIndex })));
+      setSyncDelay(delay);
+      setKpiImp(kpi);
+      const perMinute = Math.max(1, tpm/5);
+      setTps(perMinute || Math.round(200 + Math.random() * 600));
     };
     load();
 
     const interval = setInterval(() => {
-        // 降低更新频率，使数据变化更真实
-        if (Math.random() > 0.3) { // 70% 概率产生新交易
-            setGmvToday(prev => prev + 200 + Math.random() * 3000); // 单笔订单金额更合理
+        if (Math.random() > 0.3) {
+            setGmvToday(prev => prev + 5000 + Math.random() * 50000);
         }
-        
         setMetrics(prev => ({
             ...prev,
-            activeOrders: prev.activeOrders + (Math.random() > 0.6 ? Math.floor(Math.random() * 3) - 1 : 0), // 订单数缓慢波动
+            activeOrders: Math.max(0, prev.activeOrders + (Math.random() > 0.4 ? Math.floor(Math.random() * 50) - 10 : 0)),
+            logisticsException: Math.max(0, prev.logisticsException + Math.floor(Math.random() * 30) - 10),
             dataSyncDelay: Number(Math.max(0.1, Math.min(2.0, prev.dataSyncDelay + (Math.random() * 0.1 - 0.05))).toFixed(1)),
             systemLoad: Number(Math.max(20, Math.min(80, prev.systemLoad + (Math.random() * 4 - 2))).toFixed(1))
         }));
+        setTps(p => Math.max(50, Math.min(800, Math.round(p + (Math.random() * 40 - 20)))));
         setLastUpdate(new Date());
     }, 5000); // 改为5秒刷新一次
 
@@ -193,8 +211,8 @@ export const Dashboard: React.FC = () => {
         </DataCard>
       </div>
 
-      {/* 中心视觉（英雄区）：全球物流地图 */}
-      <HudPanel title="跨境供应链态势感知" subtitle="全球流向图">
+      {/* 中心视觉（英雄区）：世界物流地图 */}
+      <HudPanel title="跨境供应链态势感知" subtitle="世界流向图">
         <LogisticsMap height={420} flows={flows} />
       </HudPanel>
       

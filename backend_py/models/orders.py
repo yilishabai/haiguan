@@ -14,4 +14,6 @@ class Order(Base):
     currency = Column(String, default='CNY')
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
-
+    incoterms = Column(String, default='')
+    trade_terms = Column(String, default='')
+    route = Column(String, default='')

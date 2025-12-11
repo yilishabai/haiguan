@@ -131,21 +131,21 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const role = currentRole?.id || 'trade';
 
   const [systemStats, setSystemStats] = useState({
-    onlineEnterprises: 1247,
-    activeOrders: 8932,
+    onlineEnterprises: 153240,
+    activeOrders: 48230,
     responseTime: 1.2,
-    successRate: 99.8
+    successRate: 99.6
   });
 
   useEffect(() => {
     const timer = setInterval(() => {
       setSystemStats(prev => ({
-        onlineEnterprises: Math.max(1000, prev.onlineEnterprises + Math.floor(Math.random() * 5) - 2),
-        activeOrders: Math.max(8000, prev.activeOrders + Math.floor(Math.random() * 10) - 3),
+        onlineEnterprises: Math.max(1000, prev.onlineEnterprises + Math.floor(Math.random() * 500) - 120),
+        activeOrders: Math.max(1000, prev.activeOrders + Math.floor(Math.random() * 1200) - 300),
         responseTime: Number((Math.max(0.8, Math.min(2.0, prev.responseTime + (Math.random() * 0.2 - 0.1)))).toFixed(1)),
-        successRate: Number((Math.max(99.0, Math.min(99.9, prev.successRate + (Math.random() * 0.1 - 0.05)))).toFixed(1))
+        successRate: Number((Math.max(95.0, Math.min(99.9, prev.successRate + (Math.random() * 0.2 - 0.1)))).toFixed(1))
       }));
-    }, 3000);
+    }, 5000);
     return () => clearInterval(timer);
   }, []);
 
@@ -199,7 +199,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
               </div>
               <div>
                 <h1 className="text-lg font-bold text-cyber-cyan">大规模跨境复杂供应链在线协同智能响应平台</h1>
-                <p className="text-xs text-gray-400">Large-scale Cross-border Complex Supply Chain Online Collaborative Intelligent Response Platform</p>
+                <p className="text-xs text-gray-400">跨境供应链智能协同平台</p>
               </div>
             </div>
           </div>
@@ -346,22 +346,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       </div>
 
       {/* 底部技术状态栏（弱化显示） */}
-      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/60 backdrop-blur-sm border-t border-slate-700">
-        <div className="px-4 py-2 text-xs text-gray-300 opacity-70 flex items-center space-x-6">
-          <div className="flex items-center space-x-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-green"></span>
-            <span>System Latency: <span className="digital-display">1.2s</span></span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-green"></span>
-            <span>Data Consistency: <span className="digital-display">&lt; 2s</span></span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-green"></span>
-            <span>Service Node: Online</span>
-          </div>
-        </div>
-      </footer>
+      {/* 删除底部技术状态栏 */}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useContext } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { HudPanel, GlowButton, StatusBadge } from '../components/ui/HudPanel'
 import { getOrdersPaged, countOrders, upsertOrder, deleteOrder, getEnterprisesPaged, queryAll, applyBusinessModel, analyzeOrderRisk } from '../lib/sqlite'
 import { ShoppingCart, RefreshCw, Upload, Plus, Trash2, TrendingUp, AlertTriangle } from 'lucide-react'

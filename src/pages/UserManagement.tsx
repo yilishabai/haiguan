@@ -78,7 +78,7 @@ export const UserManagement: React.FC = () => {
           try {
             const body = await resp.json()
             if (body && body.detail) msg = body.detail
-          } catch (e) { void 0 }
+          } catch (e) { console.warn(e) }
           if (resp.status === 401) {
             msg = '登录已过期，请重新登录'
             await logout()
@@ -176,7 +176,7 @@ export const UserManagement: React.FC = () => {
         try {
           const body = await resp.json()
           if (body && body.detail) msg = body.detail
-        } catch (e) { void 0 }
+        } catch (e) { console.warn(e) }
         throw new Error(msg)
       }
       await loadUsers()
@@ -211,7 +211,7 @@ export const UserManagement: React.FC = () => {
       })
       if (!resp.ok) {
         let msg = '新增角色失败'
-        try { const body = await resp.json(); if (body && body.detail) msg = body.detail } catch (e) { void 0 }
+        try { const body = await resp.json(); if (body && body.detail) msg = body.detail } catch (e) { console.warn(e) }
         throw new Error(msg)
       }
       setRoleId('')
@@ -247,7 +247,7 @@ export const UserManagement: React.FC = () => {
       })
       if (!resp.ok) {
         let msg = '更新角色失败'
-        try { const body = await resp.json(); if (body && body.detail) msg = body.detail } catch (e) { void 0 }
+        try { const body = await resp.json(); if (body && body.detail) msg = body.detail } catch (e) { console.warn(e) }
         throw new Error(msg)
       }
       setEditingRoleId(null)
@@ -268,7 +268,7 @@ export const UserManagement: React.FC = () => {
       const resp = await fetch(`/api/users/roles/${rid}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       if (!resp.ok) {
         let msg = '删除角色失败'
-        try { const body = await resp.json(); if (body && body.detail) msg = body.detail } catch (e) { void 0 }
+        try { const body = await resp.json(); if (body && body.detail) msg = body.detail } catch (e) { console.warn(e) }
         throw new Error(msg)
       }
       await loadUsers()
