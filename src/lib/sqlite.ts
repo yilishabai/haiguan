@@ -1374,32 +1374,72 @@ export async function getCategoryDistribution() {
 }
 
 export async function getProcessFunnel() {
-  const stages = [
-    { stage:'订单', sql:`SELECT COUNT(*) as c FROM orders` },
-    { stage:'支付', sql:`SELECT COUNT(*) as c FROM settlements WHERE status IN ('processing','completed')` },
-    { stage:'通关', sql:`SELECT COUNT(*) as c FROM customs_clearances WHERE status!='declared'` },
-    { stage:'物流', sql:`SELECT COUNT(*) as c FROM logistics WHERE status!='pickup'` },
-    { stage:'仓库', sql:`SELECT COUNT(*) as c FROM logistics WHERE status='completed'` }
-  ]
-  const res = [] as { stage:string, count:number }[]
-  for (const s of stages) {
-    const c = (await queryAll(s.sql))[0]?.c || 0
-    res.push({ stage: s.stage, count: c })
+  try {
+    const [
+      ordersRes,
+      settlementsProc, settlementsComp,
+      customsRes,
+      logisticsTransit, logisticsComp
+    ] = await Promise.all([
+      fetch('/api/orders/count').then(r => r.json()),
+      fetch('/api/settlements/count?status=processing').then(r => r.json()),
+      fetch('/api/settlements/count?status=completed').then(r => r.json()),
+      fetch('/api/customs/headers/count').then(r => r.json()),
+      fetch('/api/logistics/count?status=transit').then(r => r.json()),
+      fetch('/api/logistics/count?status=completed').then(r => r.json())
+    ])
+
+    const ordersCount = ordersRes.count || 0
+    const settlementsCount = (settlementsProc.count || 0) + (settlementsComp.count || 0)
+    const customsCount = customsRes.count || 0
+    const logisticsCount = (logisticsTransit.count || 0) + (logisticsComp.count || 0)
+    const warehouseCount = logisticsComp.count || 0
+
+    return [
+      { stage: '订单', count: ordersCount },
+      { stage: '支付', count: settlementsCount },
+      { stage: '通关', count: customsCount },
+      { stage: '物流', count: logisticsCount },
+      { stage: '仓库', count: warehouseCount }
+    ]
+  } catch (e) {
+    console.error('Failed to fetch funnel data from API, falling back to local DB', e)
+    const stages = [
+      { stage:'订单', sql:`SELECT COUNT(*) as c FROM orders` },
+      { stage:'支付', sql:`SELECT COUNT(*) as c FROM settlements WHERE status IN ('processing','completed')` },
+      { stage:'通关', sql:`SELECT COUNT(*) as c FROM customs_headers` },
+      { stage:'物流', sql:`SELECT COUNT(*) as c FROM logistics WHERE status IN ('transit','completed')` },
+      { stage:'仓库', sql:`SELECT COUNT(*) as c FROM logistics WHERE status='completed'` }
+    ]
+    const res = [] as { stage:string, count:number }[]
+    for (const s of stages) {
+      const c = (await queryAll(s.sql))[0]?.c || 0
+      res.push({ stage: s.stage, count: c })
+    }
+    return res
   }
-  return res
 }
 
 export async function getFunnelTransitions() {
   const total = (await queryAll(`SELECT COUNT(*) as c FROM orders`))[0]?.c || 0
-  const toCustoms = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id)`))[0]?.c || 0
-  const toLogistics = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM customs_clearances c WHERE c.order_id=o.id) AND EXISTS(SELECT 1 FROM logistics l WHERE l.order_id=o.id)`))[0]?.c || 0
-  const toPayment = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM logistics l WHERE l.order_id=o.id) AND EXISTS(SELECT 1 FROM settlements s WHERE s.order_id=o.id)`))[0]?.c || 0
-  const toWarehouse = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM settlements s WHERE s.order_id=o.id AND s.status='completed') AND EXISTS(SELECT 1 FROM logistics l WHERE l.order_id=o.id AND l.status='completed')`))[0]?.c || 0
+  
+  // Order -> Payment
+  const toPayment = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM settlements s WHERE s.order_id=o.id)`))[0]?.c || 0
+  
+  // Payment -> Customs
+  const toCustoms = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM settlements s WHERE s.order_id=o.id) AND EXISTS(SELECT 1 FROM customs_headers ch WHERE ch.order_id=o.id)`))[0]?.c || 0
+  
+  // Customs -> Logistics
+  const toLogistics = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM settlements s WHERE s.order_id=o.id) AND EXISTS(SELECT 1 FROM customs_headers ch WHERE ch.order_id=o.id) AND EXISTS(SELECT 1 FROM logistics l WHERE l.order_id=o.id)`))[0]?.c || 0
+  
+  // Logistics -> Warehouse
+  const toWarehouse = (await queryAll(`SELECT COUNT(*) as c FROM orders o WHERE EXISTS(SELECT 1 FROM settlements s WHERE s.order_id=o.id) AND EXISTS(SELECT 1 FROM customs_headers ch WHERE ch.order_id=o.id) AND EXISTS(SELECT 1 FROM logistics l WHERE l.order_id=o.id AND l.status='completed')`))[0]?.c || 0
+
   const data = [
-    { from:'订单', to:'通关', count: toCustoms },
+    { from:'订单', to:'支付', count: toPayment },
+    { from:'支付', to:'通关', count: toCustoms },
     { from:'通关', to:'物流', count: toLogistics },
-    { from:'物流', to:'支付', count: toPayment },
-    { from:'支付', to:'入库', count: toWarehouse }
+    { from:'物流', to:'仓库', count: toWarehouse }
   ]
   return data.map(d=>({ ...d, total }))
 }

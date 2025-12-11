@@ -5,7 +5,7 @@ import { HudPanel, DataCard, StatusBadge, GlowButton } from '../components/ui/Hu
 import { UploadModal } from '../components/UploadModal';
 import GaugeChart from '../components/charts/GaugeChart';
 import { Brain, Cpu, Database, TrendingUp, Target, Zap, Play, RefreshCw, Download, Upload, Eye, Edit, Trash2, Terminal, FileCode, FileText, Activity, ShieldCheck, DollarSign } from 'lucide-react';
-import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll, countAlgorithms, countBusinessModels, logAlgoTest, searchCaseTraces, countCaseTraces, bindAlgorithmToOrder, getBindingsForOrder, getAlgorithmFlow, computeTaxes, getPaymentMethods, insertCaseTrace, getModelExecutionLogs, getAlgoTestHistory } from '../lib/sqlite';
+import { getAlgorithms, getBusinessModels, updateAlgorithmCode, upsertBusinessModel, deleteBusinessModel, getAlgorithmRecommendations, applyBusinessModel, queryAll, countAlgorithms, countBusinessModels, logAlgoTest, searchCaseTraces, countCaseTraces, bindAlgorithmToOrder, getBindingsForOrder, getAlgorithmFlow, upsertAlgorithmFlow, computeTaxes, getPaymentMethods, insertCaseTrace, getModelExecutionLogs, getAlgoTestHistory } from '../lib/sqlite';
 
 //
 
@@ -26,7 +26,7 @@ export const Capabilities: React.FC = () => {
   const [traceTotal, setTraceTotal] = useState(0);
   const [bindingOrders, setBindingOrders] = useState<any[]>([]);
   const [selectedTrace, setSelectedTrace] = useState<any>(null);
-  const [, setFlowAlgoId] = useState<string>('');
+  const [flowAlgoId, setFlowAlgoId] = useState<string>('');
   const [flowBlocks, setFlowBlocks] = useState<any[]>([]);
   const [flowEdges, setFlowEdges] = useState<any[]>([]);
   const [traceOrder, setTraceOrder] = useState<any>(null);

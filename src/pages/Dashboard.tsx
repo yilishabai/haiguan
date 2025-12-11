@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { HudPanel, DataCard, MetricDisplay, StatusBadge } from '../components/ui/HudPanel';
 import LogisticsMap from '../components/charts/LogisticsMap';
+import FunnelChart from '../components/charts/FunnelChart';
 import { useNavigate } from 'react-router-dom';
 import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getTodayGMV, getPortsCongestion, consistencyCheck, getKpiImprovements, getTradesPerMinute, getLogisticsData, getCurrentLogisticsRoutes } from '../lib/sqlite';
 import { 
@@ -316,19 +317,7 @@ export const Dashboard: React.FC = () => {
 
       {/* 业务流程漏斗 */}
       <HudPanel title="流程漏斗" subtitle="订单 → 支付 → 通关 → 物流 → 仓库">
-        <div className="flex items-center space-x-2 overflow-x-auto py-2">
-          {funnel.map((s, idx) => (
-            <div key={s.stage} className="flex items-center">
-              <div className="px-4 py-3 rounded-lg border border-slate-700 bg-slate-800/50">
-                <div className="text-xs text-gray-400">{s.stage}</div>
-                <div className="digital-display text-emerald-green font-bold">{s.count.toLocaleString()}</div>
-              </div>
-              {idx < funnel.length - 1 && (
-                <div className="mx-2 text-cyber-cyan">→</div>
-              )}
-            </div>
-          ))}
-        </div>
+        <FunnelChart data={funnel} height="260px" />
       </HudPanel>
 
       {/* 技术指标（弱化展示） */}
