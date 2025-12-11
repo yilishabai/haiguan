@@ -26,7 +26,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
           try {
             const json = JSON.parse(cached)
             echarts.registerMap('world', json)
-          } catch (_) {}
+          } catch { void 0 }
         }
 
         if (!echarts.getMap('world')) {
@@ -42,13 +42,13 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
               if (resp.ok) {
                 const worldMap = await resp.json()
                 echarts.registerMap('world', worldMap)
-                try { localStorage.setItem('world_geojson', JSON.stringify(worldMap)) } catch (_) {}
+                try { localStorage.setItem('world_geojson', JSON.stringify(worldMap)) } catch { void 0 }
                 break
               }
-            } catch (_) {}
+            } catch { void 0 }
           }
         }
-      } catch (_) {}
+      } catch { void 0 }
 
       const beijing = { name: '北京', coord: [116.4074, 39.9042] }
       const shanghai = { name: '上海', coord: [121.4917, 31.2333] }
@@ -123,7 +123,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
                 curveness: 0.05
               },
               progressive: 4000,
-              data: (flows.length ? flows.map(f=>({ coords:[f.from, f.to], value:1, tooltip: f.tooltip })) : defaultLines)
+              data: defaultLines
             },
             {
               type: 'effectScatter',
@@ -165,9 +165,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
 
       try {
         chart.setOption(option)
-      } catch (_) {
-        chart.setOption({ graphic: [{ type: 'text', left: 'center', top: 'middle', style: { text: '地图加载失败', fill: '#94a3b8' } }] })
-      }
+      } catch { void 0; chart.setOption({ graphic: [{ type: 'text', left: 'center', top: 'middle', style: { text: '地图加载失败', fill: '#94a3b8' } }] }) }
 
       const handleResize = () => chart.resize()
       window.addEventListener('resize', handleResize)
@@ -200,7 +198,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({ height = 400, flows 
     const data = (flows||[]).map(f=>({ coords:[f.from, f.to], value:1, tooltip: f.tooltip }))
     try {
       chart.setOption({ series: [{ type: 'lines', coordinateSystem: 'geo', data }] })
-    } catch (_) {}
+    } catch { void 0 }
   }, [flows])
 
   return (

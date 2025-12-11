@@ -108,6 +108,12 @@ export async function startCollaborationEngine() {
 
 export function startConsistencyScheduler() {
   if (consistencyTimer) return
-  const run = async () => { try { await consistencyCheck() } catch (_) {} }
+  const run = async () => {
+    try {
+      await consistencyCheck()
+    } catch {
+      // ignore
+    }
+  }
   consistencyTimer = setInterval(run, 500)
 }

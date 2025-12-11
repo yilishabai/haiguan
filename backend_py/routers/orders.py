@@ -14,12 +14,14 @@ def get_db():
         db.close()
 
 @router.get('')
-def list_orders(q: str = '', status: str = 'all', offset: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+def list_orders(q: str = '', status: str = 'all', category: str = 'all', offset: int = 0, limit: int = 10, db: Session = Depends(get_db)):
     query = db.query(Order)
     if q:
         query = query.filter((Order.order_number.like(f'%{q}%')) | (Order.enterprise.like(f'%{q}%')))
     if status and status != 'all':
         query = query.filter(Order.status == status)
+    if category and category != 'all':
+        query = query.filter(Order.category == category)
     rows = query.order_by(Order.created_at.desc()).offset(offset).limit(limit).all()
     return [{
         'id': r.id,
@@ -36,12 +38,14 @@ def list_orders(q: str = '', status: str = 'all', offset: int = 0, limit: int = 
     } for r in rows]
 
 @router.get('/count')
-def count_orders(q: str = '', status: str = 'all', db: Session = Depends(get_db)):
+def count_orders(q: str = '', status: str = 'all', category: str = 'all', db: Session = Depends(get_db)):
     query = db.query(Order)
     if q:
         query = query.filter((Order.order_number.like(f'%{q}%')) | (Order.enterprise.like(f'%{q}%')))
     if status and status != 'all':
         query = query.filter(Order.status == status)
+    if category and category != 'all':
+        query = query.filter(Order.category == category)
     return {'count': query.count()}
 
 @router.post('')

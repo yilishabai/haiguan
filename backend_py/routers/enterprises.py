@@ -1,7 +1,10 @@
+import uuid
+from datetime import datetime
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from backend_py.db import SessionLocal
 from backend_py.models.enterprises import Enterprise
+from backend_py.models.orders import Order
 
 router = APIRouter(prefix='/api/enterprises')
 
@@ -14,6 +17,45 @@ def get_db():
 
 @router.get('')
 def list_enterprises(q: str = '', type: str = 'all', status: str = 'all', category: str = 'all', region: str = 'all', offset: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    # 1. Sync enterprises from Orders if needed
+    try:
+        # Find all unique enterprise names in Orders
+        # Use set comprehension directly
+        active_names = {x[0] for x in db.query(Order.enterprise).distinct().all() if x[0]}
+        
+        # Find all existing enterprise names (fetch all to avoid 'too many SQL variables' error with IN clause)
+        existing_names = {x[0] for x in db.query(Enterprise.name).all()}
+        
+        # Identify missing ones
+        missing = active_names - existing_names
+        
+        # Insert missing enterprises
+        if missing:
+            new_ents = []
+            for name in missing:
+                # Generate dummy data for auto-discovered enterprise
+                ent = Enterprise(
+                    id=f'E-AUTO-{uuid.uuid4().hex[:8]}',
+                    reg_no=f'REG-{uuid.uuid4().hex[:6].upper()}',
+                    name=name,
+                    type='both', # Default
+                    category='electronics', # Default
+                    region='Unknown',
+                    status='active',
+                    compliance=80.0,
+                    service_eligible=1,
+                    active_orders=0,
+                    last_active=datetime.utcnow()
+                )
+                new_ents.append(ent)
+            db.add_all(new_ents)
+            db.commit()
+    except Exception as e:
+        print(f"Error syncing enterprises: {e}")
+        # Rollback to ensure the session is clean for the subsequent query
+        db.rollback()
+
+    # 2. Query enterprises (now including the synced ones)
     query = db.query(Enterprise)
     if q:
         like = f'%{q}%'
@@ -38,7 +80,7 @@ def list_enterprises(q: str = '', type: str = 'all', status: str = 'all', catego
         'compliance': r.compliance,
         'eligible': bool(r.service_eligible),
         'activeOrders': r.active_orders,
-        'lastActive': r.last_active.isoformat() if r.last_active else None,
+        'lastActive': (r.last_active.isoformat() if getattr(r.last_active, 'isoformat', None) else (r.last_active if r.last_active else None)),
     } for r in rows]
 
 @router.get('/count')

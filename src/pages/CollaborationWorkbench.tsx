@@ -26,8 +26,7 @@ export const CollaborationWorkbench: React.FC = () => {
 
   const load = useCallback(async () => {
     const offset = (page-1)*pageSize
-    let orders = await getOrdersPaged(q, 'all', offset, pageSize)
-    if (category !== 'all') orders = orders.filter((o:any)=> (o.category||'')===category)
+    const orders = await getOrdersPaged(q, 'all', offset, pageSize, category)
     const enrich = await Promise.all(orders.map(async (o:any)=>{
       const [sett, cust, lg] = await Promise.all([
         getSettlementByOrder(o.id),
@@ -48,11 +47,7 @@ export const CollaborationWorkbench: React.FC = () => {
     }))
     setTasks(enrich)
     // 统计总数（考虑分类过滤）
-    let totalCnt = await countOrders(q, 'all')
-    if (category !== 'all') {
-      const allForCat = await getOrdersPaged(q, 'all', 0, 1000)
-      totalCnt = allForCat.filter((o:any)=> (o.category||'')===category).length
-    }
+    const totalCnt = await countOrders(q, 'all', category)
     setTotal(totalCnt)
     // KPI：待处理、报关金额（今日）、异常阻断
     const totalOrders = await countOrders('', 'all')

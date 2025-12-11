@@ -25,9 +25,11 @@ async function initDb() {
   const db = saved ? new SQL.Database(fromBase64(saved)) : new SQL.Database()
   if (!saved) seed(db)
   migrate(db)
-  try {
-    await syncFromBackendInto(db)
-  } catch (_) {}
+  // try {
+  //   await syncFromBackendInto(db)
+  // } catch {
+  //   // ignore
+  // }
   return db
 }
 
@@ -606,11 +608,11 @@ async function syncFromBackendInto(db: Database) {
           $cur:r.currency||'CNY',$tv:r.totalValue||0,$st:r.status||'declared',$dd:String(r.declareDate||new Date().toISOString().slice(0,10)),$oid:r.orderId||'',
           $upd:new Date().toISOString()
         })
-        try { } catch (_) {}
+        try { } catch { /* ignore */ }
         }
     }
     persist(db)
-  } catch (_) {}
+  } catch { /* ignore */ }
 }
 
 function migrate(db: Database) {
@@ -660,7 +662,7 @@ function migrate(db: Database) {
       amount REAL,
       ts TEXT
     )`)
-  } catch (e) {}
+  } catch { /* ignore */ }
   try {
     const info = db.exec(`PRAGMA table_info(logistics)`)
     const cols = (info[0]?.values || []).map((row:any[]) => row[1])
@@ -701,7 +703,7 @@ function migrate(db: Database) {
     if (!cols.includes('is_fcl')) { db.run(`ALTER TABLE logistics ADD COLUMN is_fcl INTEGER`) }
     if (!cols.includes('freight_cost')) { db.run(`ALTER TABLE logistics ADD COLUMN freight_cost REAL`) }
     if (!cols.includes('insurance_cost')) { db.run(`ALTER TABLE logistics ADD COLUMN insurance_cost REAL`) }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     const info = db.exec(`PRAGMA table_info(settlements)`)
@@ -709,7 +711,7 @@ function migrate(db: Database) {
     if (!cols.includes('payment_method')) {
       db.run(`ALTER TABLE settlements ADD COLUMN payment_method TEXT`)
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     const info = db.exec(`PRAGMA table_info(orders)`)
@@ -725,7 +727,7 @@ function migrate(db: Database) {
     if (!cols.includes('carrier_id')) { db.run(`ALTER TABLE orders ADD COLUMN carrier_id TEXT`) }
     if (!cols.includes('supplier_id')) { db.run(`ALTER TABLE orders ADD COLUMN supplier_id TEXT`) }
     if (!cols.includes('buyer_id')) { db.run(`ALTER TABLE orders ADD COLUMN buyer_id TEXT`) }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     db.run(`CREATE TABLE IF NOT EXISTS participant_roles (
@@ -744,7 +746,7 @@ function migrate(db: Database) {
       db.run(`INSERT INTO participant_roles(enterprise_id,role) VALUES($e,$r)`,{ $e:get(4), $r:'broker' })
       db.run(`INSERT INTO participant_roles(enterprise_id,role) VALUES($e,$r)`,{ $e:get(5), $r:'carrier' })
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     db.run(`CREATE TABLE IF NOT EXISTS exchange_rates (
@@ -763,7 +765,7 @@ function migrate(db: Database) {
         { b:'JPY', q:'CNY', r:0.05 }
       ].forEach(x=> db.run(`INSERT INTO exchange_rates(base,quote,rate,updated_at) VALUES($b,$q,$r,$t)`,{ $b:x.b,$q:x.q,$r:x.r,$t:new Date().toISOString() }))
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     db.run(`CREATE TABLE IF NOT EXISTS ports_congestion (
@@ -771,7 +773,7 @@ function migrate(db: Database) {
       idx REAL,
       updated_at TEXT
     )`)
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     db.run(`CREATE TABLE IF NOT EXISTS ports (
@@ -789,7 +791,7 @@ function migrate(db: Database) {
         { code:'JPOSA', name:'大阪港', country:'JP' }
       ].forEach(p=> db.run(`INSERT INTO ports(code,name,country) VALUES($c,$n,$ct)`,{ $c:p.code,$n:p.name,$ct:p.country }))
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     db.run(`CREATE TABLE IF NOT EXISTS countries (
@@ -802,7 +804,7 @@ function migrate(db: Database) {
         { code:'CN', name:'中国' }, { code:'US', name:'美国' }, { code:'GB', name:'英国' }, { code:'FR', name:'法国' }, { code:'DE', name:'德国' }, { code:'JP', name:'日本' }, { code:'SG', name:'新加坡' }
       ].forEach(x=> db.run(`INSERT INTO countries(code,name) VALUES($c,$n)`,{ $c:x.code,$n:x.name }))
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     db.run(`CREATE TABLE IF NOT EXISTS units (
@@ -820,7 +822,7 @@ function migrate(db: Database) {
         { code:'ML', name:'毫升', factor:0.001 }
       ].forEach(u=> db.run(`INSERT INTO units(code,name,factor) VALUES($c,$n,$f)`,{ $c:u.code,$n:u.name,$f:u.factor }))
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     db.run(`CREATE TABLE IF NOT EXISTS carriers (
@@ -839,7 +841,7 @@ function migrate(db: Database) {
         { id:'CZ', name:'南方航空', type:'air' }
       ].forEach(ca=> db.run(`INSERT INTO carriers(id,name,type) VALUES($i,$n,$t)`,{ $i:ca.id,$n:ca.name,$t:ca.type }))
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     db.run(`CREATE TABLE IF NOT EXISTS incoterms (
@@ -856,7 +858,7 @@ function migrate(db: Database) {
         { code:'DDP', name:'完税后交货', description:'卖方承担最大责任' }
       ].forEach(i=> db.run(`INSERT INTO incoterms(code,name,description) VALUES($c,$n,$d)`,{ $c:i.code,$n:i.name,$d:i.description }))
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     db.run(`CREATE TABLE IF NOT EXISTS documents (
@@ -892,7 +894,7 @@ function migrate(db: Database) {
         }
       }
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     db.run(`CREATE TABLE IF NOT EXISTS track_events (
@@ -922,7 +924,7 @@ function migrate(db: Database) {
         }
       }
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     // Add more business models to cover more categories
@@ -934,7 +936,7 @@ function migrate(db: Database) {
     if (!existing.includes('textile-model')) {
       db.run(`INSERT INTO business_models(id,name,category,version,status,enterprises,orders,description,scenarios,compliance,successRate,lastUpdated,maintainer) VALUES('textile-model','纺织品类业务模型','textile','v1.0.1','active',132,1789,'纺织品跨境品质与合规模型','["面料溯源","环保认证","尺码标准"]','["REACH","海关","税务"]',88.6,'2025-11-23','纺织业务部')`)
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     const info = db.exec(`PRAGMA table_info(business_models)`)
@@ -947,7 +949,7 @@ function migrate(db: Database) {
       db.run(`UPDATE business_models SET chapters='["85"]' WHERE category='electronics'`)
       db.run(`UPDATE business_models SET chapters='["61","62"]' WHERE category='textile'`)
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     // Enrich applications and review workflows
@@ -989,7 +991,7 @@ function migrate(db: Database) {
         }
       }
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     // Create enterprises table and seed ≥ 10000 rows if missing/scarce
@@ -1029,7 +1031,7 @@ function migrate(db: Database) {
         })
       }
     }
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     [
@@ -1043,17 +1045,17 @@ function migrate(db: Database) {
       { id:'doc-consistency', name:'单证一致性校验算法', cat:'control', ver:'v1.0.0', st:'active', acc:95.1, perf:89.2, use:820, desc:'PO/PI/CI/PL/BL/AWB 等单证一致性校验', feats:'["OCR","字段比对","规则引擎"]', upd:'2025-11-26', auth:'文档系统组', code:'def check_docs(po, pi, ci, pl):\n    return []' },
       { id:'coldchain-anomaly', name:'冷链异常检测算法', cat:'control', ver:'v1.0.0', st:'active', acc:92.3, perf:88.8, use:406, desc:'冷链设备温湿度与震动异常检测', feats:'["时序异常","传感器融合","报警"]', upd:'2025-11-26', auth:'IoT智能组', code:'def detect_coldchain_anomaly(timeseries):\n    return False' },
       { id:'leadtime-prediction', name:'交期预测算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:90.7, perf:89.9, use:734, desc:'基于历史ETA/ETD与路由的交期预测', feats:'["ETA预测","特征工程","偏差校正"]', upd:'2025-11-26', auth:'时效预测组', code:'def predict_leadtime(route, history):\n    return 72' },
-      { id:'inventory-allocation', name:'库存分配优化算法', cat:'inventory', ver:'v1.1.0', st:'active', acc:89.8, perf:87.5, use:622, desc:'多级库存与服务水平的分配优化', feats:'["LP","服务水平","补货策略"]', upd:'2025-11-26', auth:'供应计划组', code:'def optimize_allocation(nodes, demand):\n    return {\"nodeA\":100}' },
+      { id:'inventory-allocation', name:'库存分配优化算法', cat:'inventory', ver:'v1.1.0', st:'active', acc:89.8, perf:87.5, use:622, desc:'多级库存与服务水平的分配优化', feats:'["LP","服务水平","补货策略"]', upd:'2025-11-26', auth:'供应计划组', code:'def optimize_allocation(nodes, demand):\n    return {"nodeA":100}' },
       { id:'demand-sensing', name:'需求感知算法', cat:'coordination', ver:'v1.0.0', st:'active', acc:87.9, perf:90.8, use:410, desc:'短期需求感知与促销因子建模', feats:'["短期预测","促销因子","噪声滤波"]', upd:'2025-11-26', auth:'需求洞察组', code:'def sense_demand(streams):\n    return 1.0' },
       { id:'fraud-detection', name:'支付欺诈检测算法', cat:'decision', ver:'v1.0.0', st:'active', acc:93.2, perf:90.3, use:512, desc:'跨境支付欺诈模式识别与拦截', feats:'["异常行为","黑名单","规则学习"]', upd:'2025-11-26', auth:'风控组', code:'def detect_fraud(tx):\n    return False' },
-      { id:'fx-hedging', name:'汇率套期保值算法', cat:'decision', ver:'v1.0.0', st:'active', acc:88.4, perf:92.6, use:295, desc:'择时与仓位管理的套保策略', feats:'["择时","仓位","风险限额"]', upd:'2025-11-26', auth:'金融工程组', code:'def hedge_fx(exposure, rate):\n    return {\"hedge_ratio\":0.6}' },
+      { id:'fx-hedging', name:'汇率套期保值算法', cat:'decision', ver:'v1.0.0', st:'active', acc:88.4, perf:92.6, use:295, desc:'择时与仓位管理的套保策略', feats:'["择时","仓位","风险限额"]', upd:'2025-11-26', auth:'金融工程组', code:'def hedge_fx(exposure, rate):\n    return {"hedge_ratio":0.6}' },
       { id:'dynamic-pricing', name:'动态定价算法', cat:'decision', ver:'v1.0.0', st:'active', acc:86.5, perf:91.2, use:377, desc:'库存与需求驱动的动态定价', feats:'["价格弹性","库存约束","收益优化"]', upd:'2025-11-26', auth:'收益管理组', code:'def dynamic_price(stock, demand):\n    return 199.0' }
     ].forEach(x=>{
       db.run(`INSERT OR IGNORE INTO algorithms(id,name,category,version,status,accuracy,performance,usage,description,features,lastUpdated,author,code) VALUES($id,$n,$c,$v,$s,$a,$p,$u,$d,$f,$lu,$au,$co)`,{
         $id:x.id,$n:x.name,$c:x.cat,$v:x.ver,$s:x.st,$a:x.acc,$p:x.perf,$u:x.use,$d:x.desc,$f:x.feats,$lu:x.upd,$au:x.auth,$co:x.code
       })
     })
-  } catch (e) {}
+  } catch { /* ignore */ }
 
   try {
     [
@@ -1074,9 +1076,9 @@ function migrate(db: Database) {
         $id:x.id,$n:x.name,$c:x.cat,$v:x.ver,$s:x.st,$e:x.ent,$o:x.ord,$d:x.desc,$sc:x.sc,$cp:x.cp,$sr:x.sr,$lu:x.lu,$mt:x.mt
       })
     })
-  } catch (e) {}
+  } catch { /* ignore */ }
 
-  try { persist(db) } catch (e) {}
+  try { persist(db) } catch { /* ignore */ }
 }
 
 export async function getDatabase() {
@@ -1437,7 +1439,7 @@ export async function getSettlementByOrder(orderId: string) {
   return rows[0] || null
 }
 
-export async function completeSettlement(orderId: string, method: string) {
+export async function completeSettlement(orderId: string, _method: string) {
   const existing = await getSettlementByOrder(orderId)
   const payload: any = {
     id: existing?.id || ('S' + Date.now()),
@@ -1531,7 +1533,7 @@ export async function getAlgorithms(q: string = '', offset: number = 0, limit: n
         features: Array.isArray(r.features) ? r.features : (() => { try { return JSON.parse(r.features || '[]') } catch { return [] } })()
       }))
     }
-  } catch (_) {}
+  } catch { /* ignore */ }
   const rows = await queryAll(`SELECT id, name, category, version, status, accuracy, performance, usage, description, features, last_updated as lastUpdated, author, code FROM algorithms ORDER BY id LIMIT $limit OFFSET $offset`,{ $limit: limit, $offset: offset })
   return rows.map((r:any)=> ({ ...r, features: Array.isArray(r.features) ? r.features : (()=>{ try { return JSON.parse(r.features||'[]') } catch { return [] } })() }))
 }
@@ -2211,7 +2213,7 @@ export async function consistencyCheck() {
   const total = (await queryAll(`SELECT COUNT(*) as c FROM orders`))[0]?.c || 1
   const okCustoms = (await queryAll(`SELECT COUNT(*) as c FROM customs_clearances WHERE status='cleared'`))[0]?.c || 0
   const blockedLogistics = (await queryAll(`SELECT COUNT(*) as c FROM logistics WHERE status='customs' OR status='pickup'`))[0]?.c || 0
-  const settled = (await queryAll(`SELECT COUNT(*) as c FROM settlements WHERE status='completed'`))[0]?.c || 0
+  const _settled = (await queryAll(`SELECT COUNT(*) as c FROM settlements WHERE status='completed'`))[0]?.c || 0
   const score = Math.max(0, Math.min(2, 2 - ((blockedLogistics/total) + ((total - okCustoms)/total)*0.5)))
   await exec(`INSERT OR REPLACE INTO system_metrics(key,value) VALUES('data_sync_delay',$v)`,{ $v: score })
   return score
@@ -2367,10 +2369,11 @@ export async function advanceOrderFlow(orderId: string) {
 
 // --- Orders CRUD ---
 
-export async function getOrdersPaged(q: string, status: string, offset: number, limit: number) {
+export async function getOrdersPaged(q: string, status: string, offset: number, limit: number, category: string = 'all') {
   const qs = new URLSearchParams()
   if (q) qs.set('q', q)
   if (status) qs.set('status', status)
+  if (category && category !== 'all') qs.set('category', category)
   qs.set('offset', String(offset))
   qs.set('limit', String(limit))
   const res = await fetch(`/api/orders?${qs.toString()}`)
@@ -2378,10 +2381,11 @@ export async function getOrdersPaged(q: string, status: string, offset: number, 
   return data
 }
 
-export async function countOrders(q: string, status: string) {
+export async function countOrders(q: string, status: string, category: string = 'all') {
   const qs = new URLSearchParams()
   if (q) qs.set('q', q)
   if (status) qs.set('status', status)
+  if (category && category !== 'all') qs.set('category', category)
   const res = await fetch(`/api/orders/count?${qs.toString()}`)
   const json = await res.json()
   return json.count || 0

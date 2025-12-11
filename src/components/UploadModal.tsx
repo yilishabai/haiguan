@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { X, Upload, FileText, CheckCircle, Loader2 } from 'lucide-react';
 import { GlowButton } from './ui/HudPanel';
 
 interface UploadModalProps {

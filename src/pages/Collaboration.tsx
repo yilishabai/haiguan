@@ -210,7 +210,7 @@ export const Collaboration: React.FC = () => {
       setOrderSettlements(settlements as any);
       setCustomsClearances(customs as any);
       setLogisticsData(logistics as any);
-      try { await setCurrentLogisticsRoutes((logistics||[]).map((l:any)=>({ origin: String(l.origin||''), destination: String(l.destination||''), trackingNo: String(l.trackingNo||'') }))) } catch (_) {}
+      try { await setCurrentLogisticsRoutes((logistics||[]).map((l:any)=>({ origin: String(l.origin||''), destination: String(l.destination||''), trackingNo: String(l.trackingNo||'') }))) } catch { void 0 }
       setPaymentMethods(payments as any);
       setInventoryData(inventory as any);
       setCollaborationFlows(flows);
@@ -281,7 +281,7 @@ export const Collaboration: React.FC = () => {
     const push = async () => {
       try {
         await setCurrentLogisticsRoutes((logisticsData||[]).map((l:any)=>({ origin: String(l.origin||''), destination: String(l.destination||''), trackingNo: String(l.trackingNo||'') })))
-      } catch (_) {}
+      } catch { void 0 }
     }
     push()
   }, [logisticsData])

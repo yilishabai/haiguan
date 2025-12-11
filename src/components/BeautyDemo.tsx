@@ -53,184 +53,184 @@ interface BeautyMetrics {
   compliance: number;
 }
 
+function generateBeautyProcesses(): BeautyProcess[] {
+  return [
+    {
+      id: 'research',
+      name: '美妆研发',
+      status: 'completed',
+      progress: 100,
+      compliance: 98.5,
+      riskLevel: 'low',
+      enterprises: 234,
+      avgTime: 180,
+      nmpaStatus: 'approved'
+    },
+    {
+      id: 'testing',
+      name: '安全检测',
+      status: 'compliance',
+      progress: 87.3,
+      compliance: 94.2,
+      riskLevel: 'medium',
+      enterprises: 189,
+      avgTime: 45,
+      nmpaStatus: 'reviewing'
+    },
+    {
+      id: 'production',
+      name: '生产制造',
+      status: 'active',
+      progress: 92.5,
+      compliance: 96.8,
+      riskLevel: 'low',
+      enterprises: 156,
+      avgTime: 21,
+      nmpaStatus: 'approved'
+    },
+    {
+      id: 'packaging',
+      name: '包装设计',
+      status: 'active',
+      progress: 78.9,
+      compliance: 89.7,
+      riskLevel: 'medium',
+      enterprises: 298,
+      avgTime: 14,
+      nmpaStatus: 'pending'
+    },
+    {
+      id: 'customs',
+      name: '报关检验',
+      status: 'warning',
+      progress: 65.4,
+      compliance: 82.1,
+      riskLevel: 'high',
+      enterprises: 134,
+      avgTime: 7,
+      nmpaStatus: 'reviewing'
+    },
+    {
+      id: 'logistics',
+      name: '冷链物流',
+      status: 'active',
+      progress: 88.7,
+      compliance: 93.4,
+      riskLevel: 'low',
+      enterprises: 89,
+      avgTime: 72,
+      nmpaStatus: 'approved'
+    },
+    {
+      id: 'sales',
+      name: '销售分销',
+      status: 'completed',
+      progress: 95.2,
+      compliance: 97.6,
+      riskLevel: 'low',
+      enterprises: 445,
+      avgTime: 15,
+      nmpaStatus: 'approved'
+    },
+    {
+      id: 'feedback',
+      name: '用户反馈',
+      status: 'active',
+      progress: 82.1,
+      compliance: 91.3,
+      riskLevel: 'medium',
+      enterprises: 567,
+      avgTime: 30,
+      nmpaStatus: 'approved'
+    }
+  ]
+}
+
+function generateNMPATrackings(): NMPATracking[] {
+  return [
+    {
+      id: '1',
+      productName: '玻尿酸精华液',
+      enterprise: '上海美妆集团',
+      applicationNo: 'NMPA20241227001',
+      status: 'approved',
+      submitDate: '2024-11-15',
+      expectedDate: '2024-12-15',
+      compliance: 98.5,
+      riskScore: 12
+    },
+    {
+      id: '2',
+      productName: '维生素C面膜',
+      enterprise: '广州化妆品公司',
+      applicationNo: 'NMPA20241227002',
+      status: 'field_test',
+      submitDate: '2024-10-20',
+      expectedDate: '2024-12-20',
+      compliance: 94.2,
+      riskScore: 28
+    },
+    {
+      id: '3',
+      productName: '烟酰胺美白霜',
+      enterprise: '深圳生物科技',
+      applicationNo: 'NMPA20241227003',
+      status: 'under_review',
+      submitDate: '2024-11-30',
+      expectedDate: '2025-01-30',
+      compliance: 89.7,
+      riskScore: 45
+    },
+    {
+      id: '4',
+      productName: '胶原蛋白眼霜',
+      enterprise: '杭州护肤品牌',
+      applicationNo: 'NMPA20241227004',
+      status: 'submitted',
+      submitDate: '2024-12-10',
+      expectedDate: '2025-03-10',
+      compliance: 76.3,
+      riskScore: 67
+    }
+  ]
+}
+
+function generateBeautyMetrics(): BeautyMetrics[] {
+  return [
+    { category: 'NMPA合规率', current: 94.2, target: 95.0, trend: 'up', compliance: 94.2 },
+    { category: '安全检测通过率', current: 87.3, target: 90.0, trend: 'stable', compliance: 87.3 },
+    { category: '冷链温控精度', current: 99.1, target: 99.5, trend: 'up', compliance: 99.1 },
+    { category: '用户满意度', current: 92.8, target: 95.0, trend: 'up', compliance: 92.8 },
+    { category: '不良反应率', current: 0.8, target: 0.5, trend: 'down', compliance: 99.2 },
+    { category: '溯源完整率', current: 96.5, target: 98.0, trend: 'up', compliance: 96.5 }
+  ]
+}
+
+function generateRealtimeData() {
+  return [
+    { time: '00:00', 研发数量: 12, 检测批次: 8, 生产量: 2500, 通关量: 45, 销售额: 125000 },
+    { time: '04:00', 研发数量: 8, 检测批次: 6, 生产量: 1800, 通关量: 32, 销售额: 98000 },
+    { time: '08:00', 研发数量: 18, 检测批次: 15, 生产量: 4200, 通关量: 78, 销售额: 245000 },
+    { time: '12:00', 研发数量: 25, 检测批次: 22, 生产量: 5800, 通关量: 95, 销售额: 320000 },
+    { time: '16:00', 研发数量: 20, 检测批次: 18, 生产量: 4600, 通关量: 82, 销售额: 285000 },
+    { time: '20:00', 研发数量: 15, 检测批次: 12, 生产量: 3200, 通关量: 65, 销售额: 198000 }
+  ]
+}
+
 export const BeautyDemo: React.FC = () => {
   const [activePhase, setActivePhase] = useState('research');
-  const [beautyProcesses, setBeautyProcesses] = useState<BeautyProcess[]>([]);
-  const [nmpaTrackings, setNmpaTrackings] = useState<NMPATracking[]>([]);
-  const [beautyMetrics, setBeautyMetrics] = useState<BeautyMetrics[]>([]);
-  const [realtimeData, setRealtimeData] = useState<any[]>([]);
+  const [beautyProcesses, setBeautyProcesses] = useState<BeautyProcess[]>(() => generateBeautyProcesses());
+  const [nmpaTrackings, setNmpaTrackings] = useState<NMPATracking[]>(() => generateNMPATrackings());
+  const [beautyMetrics, setBeautyMetrics] = useState<BeautyMetrics[]>(() => generateBeautyMetrics());
+  const [realtimeData, setRealtimeData] = useState<any[]>(() => generateRealtimeData());
 
-  // 美妆全流程数据
   useEffect(() => {
-    const generateBeautyProcesses = (): BeautyProcess[] => [
-      {
-        id: 'research',
-        name: '美妆研发',
-        status: 'completed',
-        progress: 100,
-        compliance: 98.5,
-        riskLevel: 'low',
-        enterprises: 234,
-        avgTime: 180,
-        nmpaStatus: 'approved'
-      },
-      {
-        id: 'testing',
-        name: '安全检测',
-        status: 'compliance',
-        progress: 87.3,
-        compliance: 94.2,
-        riskLevel: 'medium',
-        enterprises: 189,
-        avgTime: 45,
-        nmpaStatus: 'reviewing'
-      },
-      {
-        id: 'production',
-        name: '生产制造',
-        status: 'active',
-        progress: 92.5,
-        compliance: 96.8,
-        riskLevel: 'low',
-        enterprises: 156,
-        avgTime: 21,
-        nmpaStatus: 'approved'
-      },
-      {
-        id: 'packaging',
-        name: '包装设计',
-        status: 'active',
-        progress: 78.9,
-        compliance: 89.7,
-        riskLevel: 'medium',
-        enterprises: 298,
-        avgTime: 14,
-        nmpaStatus: 'pending'
-      },
-      {
-        id: 'customs',
-        name: '报关检验',
-        status: 'warning',
-        progress: 65.4,
-        compliance: 82.1,
-        riskLevel: 'high',
-        enterprises: 134,
-        avgTime: 7,
-        nmpaStatus: 'reviewing'
-      },
-      {
-        id: 'logistics',
-        name: '冷链物流',
-        status: 'active',
-        progress: 88.7,
-        compliance: 93.4,
-        riskLevel: 'low',
-        enterprises: 89,
-        avgTime: 72,
-        nmpaStatus: 'approved'
-      },
-      {
-        id: 'sales',
-        name: '销售分销',
-        status: 'completed',
-        progress: 95.2,
-        compliance: 97.6,
-        riskLevel: 'low',
-        enterprises: 445,
-        avgTime: 15,
-        nmpaStatus: 'approved'
-      },
-      {
-        id: 'feedback',
-        name: '用户反馈',
-        status: 'active',
-        progress: 82.1,
-        compliance: 91.3,
-        riskLevel: 'medium',
-        enterprises: 567,
-        avgTime: 30,
-        nmpaStatus: 'approved'
-      }
-    ];
-
-    const generateNMPATrackings = (): NMPATracking[] => [
-      {
-        id: '1',
-        productName: '玻尿酸精华液',
-        enterprise: '上海美妆集团',
-        applicationNo: 'NMPA20241227001',
-        status: 'approved',
-        submitDate: '2024-11-15',
-        expectedDate: '2024-12-15',
-        compliance: 98.5,
-        riskScore: 12
-      },
-      {
-        id: '2',
-        productName: '维生素C面膜',
-        enterprise: '广州化妆品公司',
-        applicationNo: 'NMPA20241227002',
-        status: 'field_test',
-        submitDate: '2024-10-20',
-        expectedDate: '2024-12-20',
-        compliance: 94.2,
-        riskScore: 28
-      },
-      {
-        id: '3',
-        productName: '烟酰胺美白霜',
-        enterprise: '深圳生物科技',
-        applicationNo: 'NMPA20241227003',
-        status: 'under_review',
-        submitDate: '2024-11-30',
-        expectedDate: '2025-01-30',
-        compliance: 89.7,
-        riskScore: 45
-      },
-      {
-        id: '4',
-        productName: '胶原蛋白眼霜',
-        enterprise: '杭州护肤品牌',
-        applicationNo: 'NMPA20241227004',
-        status: 'submitted',
-        submitDate: '2024-12-10',
-        expectedDate: '2025-03-10',
-        compliance: 76.3,
-        riskScore: 67
-      }
-    ];
-
-    const generateBeautyMetrics = (): BeautyMetrics[] => [
-      { category: 'NMPA合规率', current: 94.2, target: 95.0, trend: 'up', compliance: 94.2 },
-      { category: '安全检测通过率', current: 87.3, target: 90.0, trend: 'stable', compliance: 87.3 },
-      { category: '冷链温控精度', current: 99.1, target: 99.5, trend: 'up', compliance: 99.1 },
-      { category: '用户满意度', current: 92.8, target: 95.0, trend: 'up', compliance: 92.8 },
-      { category: '不良反应率', current: 0.8, target: 0.5, trend: 'down', compliance: 99.2 },
-      { category: '溯源完整率', current: 96.5, target: 98.0, trend: 'up', compliance: 96.5 }
-    ];
-
-    const generateRealtimeData = () => [
-      { time: '00:00', 研发数量: 12, 检测批次: 8, 生产量: 2500, 通关量: 45, 销售额: 125000 },
-      { time: '04:00', 研发数量: 8, 检测批次: 6, 生产量: 1800, 通关量: 32, 销售额: 98000 },
-      { time: '08:00', 研发数量: 18, 检测批次: 15, 生产量: 4200, 通关量: 78, 销售额: 245000 },
-      { time: '12:00', 研发数量: 25, 检测批次: 22, 生产量: 5800, 通关量: 95, 销售额: 320000 },
-      { time: '16:00', 研发数量: 20, 检测批次: 18, 生产量: 4600, 通关量: 82, 销售额: 285000 },
-      { time: '20:00', 研发数量: 15, 检测批次: 12, 生产量: 3200, 通关量: 65, 销售额: 198000 }
-    ];
-
-    setBeautyProcesses(generateBeautyProcesses());
-    setNmpaTrackings(generateNMPATrackings());
-    setBeautyMetrics(generateBeautyMetrics());
-    setRealtimeData(generateRealtimeData());
-
     const interval = setInterval(() => {
-      // 模拟实时数据更新
       setBeautyProcesses(generateBeautyProcesses());
       setNmpaTrackings(generateNMPATrackings());
       setBeautyMetrics(generateBeautyMetrics());
       setRealtimeData(generateRealtimeData());
     }, 3000);
-
     return () => clearInterval(interval);
   }, []);
 
@@ -267,14 +267,7 @@ export const BeautyDemo: React.FC = () => {
     }
   };
 
-  const getRiskColor = (level: string) => {
-    switch (level) {
-      case 'low': return 'text-emerald-green';
-      case 'medium': return 'text-cyber-cyan';
-      case 'high': return 'text-alert-red';
-      default: return 'text-gray-400';
-    }
-  };
+  
 
   const complianceData = [
     { name: '成分检测', value: 94.2, fill: '#00F0FF' },
@@ -284,26 +277,7 @@ export const BeautyDemo: React.FC = () => {
     { name: '包装检测', value: 89.3, fill: '#EF4444' }
   ];
 
-  const phaseData = {
-    research: [
-      { name: '成分研究', value: 85, target: 90 },
-      { name: '配方优化', value: 78, target: 85 },
-      { name: '功效验证', value: 92, target: 95 },
-      { name: '安全性评估', value: 88, target: 92 }
-    ],
-    testing: [
-      { name: '理化检测', value: 94, target: 95 },
-      { name: '微生物检测', value: 87, target: 90 },
-      { name: '毒理学测试', value: 91, target: 93 },
-      { name: '人体试用', value: 83, target: 88 }
-    ],
-    production: [
-      { name: '原料验收', value: 96, target: 98 },
-      { name: '生产过程', value: 89, target: 92 },
-      { name: '成品检验', value: 94, target: 96 },
-      { name: '包装标识', value: 87, target: 90 }
-    ]
-  };
+  
 
   return (
     <div className="space-y-6">

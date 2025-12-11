@@ -3,22 +3,29 @@ import random
 import uuid
 import os
 import json
-import csv
 import time
 from datetime import datetime, timedelta
 from faker import Faker
 
 # --- 1. 基础配置 ---
-# 数据库路径
-DB_PATH = r'../../backend_py/app.db'
-# 企业名单文件 (请确保此文件在脚本同级目录下)
-ENTERPRISE_CSV_FILE = '生成的企业名单.xlsx - Sheet1.csv'
+# 数据库路径（固定相对于脚本目录）
+DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backend_py/app.db'))
+# 企业名单 Excel 文件名
+ENTERPRISE_FILE = '生成的企业名单.xlsx'
 
-NUM_ORDERS = 5000   # 生成订单数量
+NUM_ORDERS = 321542   # 生成订单数量
 BATCH_SIZE = 500    # 批量提交阈值
 
-# 初始化 Faker (强制中文环境)
+# 初始化 Faker
 fake = Faker('zh_CN')
+
+# 尝试导入 openpyxl，用于读取 Excel
+try:
+    import openpyxl
+except ImportError:
+    print("❌ 错误：缺少 openpyxl 库，无法读取 Excel 文件。")
+    print("请运行: pip install openpyxl")
+    exit(1)
 
 # --- 2. 严格枚举 (来源于数据字典) ---
 CATEGORIES = ['beauty', 'electronics', 'wine', 'textile', 'appliance']
@@ -31,36 +38,37 @@ RISK_LEVELS = ['low', 'medium', 'high']
 
 # --- 3. 数据加载与语料池 ---
 
-def load_enterprises_from_csv():
+def load_enterprises_from_excel():
     """
-    尝试从 CSV 文件加载企业名单。
-    如果文件不存在或读取失败，回退到 Faker 随机生成。
+    使用 openpyxl 读取 Excel 文件。
+    读取第一个 Sheet 的第一列作为企业名称。
     """
     pool = []
-    file_path = os.path.join(os.path.dirname(__file__), ENTERPRISE_CSV_FILE)
+    file_path = os.path.join(os.path.dirname(__file__), ENTERPRISE_FILE)
     
     if os.path.exists(file_path):
-        print(f"📂 发现企业名单文件: {ENTERPRISE_CSV_FILE}，正在读取...")
+        print(f"📂 发现 Excel 文件: {ENTERPRISE_FILE}，正在读取...")
         try:
-            # 使用 utf-8-sig 以处理 Excel 导出可能带有的 BOM
-            with open(file_path, 'r', encoding='utf-8-sig') as f:
-                reader = csv.reader(f)
-                for i, row in enumerate(reader):
-                    if row:
-                        # 假设第一列是企业名称
-                        name = row[0].strip()
-                        # 简单的过滤：跳过看起来像表头的行
-                        if name and name not in ['企业名称', 'Company Name', 'Name', '企业']:
-                            pool.append(name)
+            workbook = openpyxl.load_workbook(file_path, read_only=True)
+            sheet = workbook.active # 获取第一个 Sheet
+            
+            # 遍历第一列 (A列)
+            for row in sheet.iter_rows(min_row=1, max_col=1, values_only=True):
+                if row and row[0]:
+                    val = str(row[0]).strip()
+                    # 简单的表头过滤
+                    if val not in ['企业名称', 'Company Name', 'Name', '企业', '名称']:
+                        pool.append(val)
+                        
             print(f"✅ 成功加载 {len(pool)} 家企业名称。")
         except Exception as e:
-            print(f"⚠️ 读取 CSV 出错 ({e})，将回退到模拟生成模式。")
+            print(f"⚠️ 读取 Excel 出错 ({e})，将回退到模拟生成模式。")
     else:
-        print(f"⚠️ 未找到文件 '{ENTERPRISE_CSV_FILE}'，将回退到模拟生成模式。")
+        print(f"⚠️ 未找到文件 '{ENTERPRISE_FILE}'，将回退到模拟生成模式。")
 
-    # 如果没读到数据，使用 Faker 生成
+    # 如果没读到数据，回退到 Faker 生成
     if not pool:
-        print("🎲 正在使用 Faker 生成虚拟企业名单...")
+        print("🎲 未读取到有效数据，正在使用 Faker 生成虚拟企业名单...")
         suffixes = ['进出口有限公司', '供应链管理公司', '国际贸易部', '跨境电商集团', '物流科技公司']
         for _ in range(200):
             pool.append(f"{fake.city()}{fake.word()}{random.choice(suffixes)}")
@@ -68,7 +76,7 @@ def load_enterprises_from_csv():
     return pool
 
 # 加载企业池
-ENTERPRISE_POOL = load_enterprises_from_csv()
+ENTERPRISE_POOL = load_enterprises_from_excel()
 
 # 商品与HS编码映射
 PRODUCT_MAP = {
@@ -93,165 +101,136 @@ def get_date_str(dt_obj):
     return dt_obj.strftime("%Y-%m-%d")
 
 def generate_distinct_code(algo_name, category):
-    """根据算法类别生成 20+ 行差异化明显的 Python 伪代码"""
+    """生成具有明显差异的 Python 伪代码"""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     if category == 'optimization':
         return f"""# Algorithm: {algo_name}
-# Category: Optimization (Scipy/Linear Programming)
+# Category: Optimization (Linear Programming)
 # Generated: {ts}
 
 import numpy as np
-from scipy.optimize import minimize, LinearConstraint
+from scipy.optimize import linprog
 
-class ResourceOptimizer:
+class LogisticsOptimizer:
     '''
-    Uses Nelder-Mead method to optimize logistics resource allocation.
-    Target: Minimize total transport cost.
+    Solves transportation problems to minimize cost under capacity constraints.
     '''
-    def __init__(self, constraints):
-        self.constraints = constraints
-        self.history = []
+    def __init__(self, cost_matrix, supply, demand):
+        self.c = cost_matrix
+        self.supply = supply
+        self.demand = demand
 
-    def objective_function(self, x):
-        # Cost function: distance * weight * fuel_price
-        return np.sum(x**2) + {random.randint(10, 50)} * np.mean(x)
-
-    def run(self, initial_guess):
-        print("Starting optimization loop...")
-        try:
-            res = minimize(
-                self.objective_function, 
-                initial_guess, 
-                method='Nelder-Mead',
-                options={{'xtol': 1e-8, 'disp': True}}
-            )
-            self.history.append(res.fun)
+    def solve(self):
+        # Flatten constraints for SciPy linprog
+        print("Initializing simplex algorithm...")
+        res = linprog(c=self.c, A_eq=self.supply, b_eq=self.demand)
+        
+        if res.success:
             return {{
-                "optimal_params": res.x.tolist(),
-                "min_cost": res.fun,
-                "success": res.success
+                "status": "OPTIMAL",
+                "min_cost": round(res.fun, 2),
+                "flow": res.x.tolist()
             }}
-        except Exception as e:
-            return {{"error": str(e)}}
+        else:
+            return {{"status": "INFEASIBLE", "error": res.message}}
 """
     elif category == 'decision':
         return f"""# Algorithm: {algo_name}
-# Category: Decision Support (Random Forest)
+# Category: Decision Support (XGBoost)
 # Generated: {ts}
 
-import joblib
+import xgboost as xgb
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from core.utils import DataPreprocessor
+from core.io import DataLoader
 
-MODEL_PATH = '/opt/models/{algo_name}_v2.pkl'
+MODEL_FILE = 'weights/{algo_name}.json'
 
-class RiskAssessor:
+class FraudDetector:
     def __init__(self):
-        self.model = None
-        self.preprocessor = DataPreprocessor()
+        self.bst = None
+        self.loader = DataLoader()
 
-    def load_weights(self):
-        try:
-            self.model = joblib.load(MODEL_PATH)
-            print("Model loaded successfully.")
-        except FileNotFoundError:
-            print("Warning: Model weights not found, initializing empty.")
+    def load_model(self):
+        self.bst = xgb.Booster()
+        self.bst.load_model(MODEL_FILE)
+        print(f"XGBoost model loaded from {{MODEL_FILE}}")
 
-    def predict_risk_level(self, transaction_data):
+    def predict(self, transaction_id):
         '''
-        Input: JSON dict of transaction details
-        Output: 'low', 'medium', 'high'
+        Returns fraud probability (0-1)
         '''
-        df = pd.DataFrame([transaction_data])
-        cleaned_data = self.preprocessor.transform(df)
+        features = self.loader.get_features(transaction_id)
+        dmatrix = xgb.DMatrix(pd.DataFrame([features]))
         
-        # Feature engineering block
-        cleaned_data['amount_log'] = np.log1p(cleaned_data['amount'])
+        score = self.bst.predict(dmatrix)[0]
         
-        probs = self.model.predict_proba(cleaned_data)
-        risk_score = probs[0][1] # Probability of positive class (fraud)
-        
-        if risk_score > 0.85:
-            return "high"
-        elif risk_score > 0.45:
-            return "medium"
-        else:
-            return "low"
+        return {{
+            "id": transaction_id,
+            "risk_score": float(score),
+            "verdict": "BLOCK" if score > 0.9 else "PASS"
+        }}
 """
     elif category == 'inventory':
         return f"""# Algorithm: {algo_name}
-# Category: Inventory Control (Time Series)
+# Category: Inventory Control (Exponential Smoothing)
 # Generated: {ts}
 
-import math
-from datetime import datetime
+class DemandForecaster:
+    '''
+    Implements Holt-Winters Exponential Smoothing for seasonal demand.
+    '''
+    def __init__(self, alpha=0.4, beta=0.2, gamma=0.3):
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        self.seasonality = 12 # Monthly seasonality
 
-class SafetyStockCalculator:
-    '''
-    Dynamic safety stock calculation based on lead time variance.
-    Formula: SS = Z * sqrt( (AvgLT * sigmaD^2) + (AvgD^2 * sigmaLT^2) )
-    '''
-    def __init__(self, service_level=0.95):
-        # Z-score for 95% service level is approx 1.65
-        self.z_score = 1.65 if service_level == 0.95 else 1.96
-    
-    def calculate(self, avg_daily_sales, std_dev_sales, avg_lead_time, std_dev_lead_time):
-        term1 = avg_lead_time * (std_dev_sales ** 2)
-        term2 = (avg_daily_sales ** 2) * (std_dev_lead_time ** 2)
+    def fit(self, history):
+        level = sum(history) / len(history)
+        trend = (history[-1] - history[0]) / len(history)
         
-        safety_stock = self.z_score * math.sqrt(term1 + term2)
-        
-        return {{
-            "safety_stock": math.ceil(safety_stock),
-            "reorder_point": (avg_daily_sales * avg_lead_time) + safety_stock,
-            "calculated_at": datetime.now().isoformat()
-        }}
-
-    def update_forecast(self, sales_history):
-        # Simple Moving Average
-        return sum(sales_history[-7:]) / 7
-"""
-    else:
-        return f"""# Algorithm: {algo_name}
-# Category: General Logic
-# Generated: {ts}
-
-import json
-import logging
-
-logger = logging.getLogger(__name__)
-
-def execute_logic(context_data):
-    '''
-    Main entry point for business rule execution.
-    '''
-    results = []
-    
-    # Validation Phase
-    if not context_data.get('id'):
-        raise ValueError("Missing ID")
-        
-    # Processing Phase
-    for item in context_data.get('items', []):
-        score = 0
-        if item['value'] > 1000:
-            score += 10
-        if item['category'] in ['restricted', 'sensitive']:
-            score += 50
+        print("Fitting model parameters...")
+        # Iterative update simulation
+        for val in history:
+            prev_level = level
+            level = self.alpha * val + (1 - self.alpha) * (level + trend)
+            trend = self.beta * (level - prev_level) + (1 - self.beta) * trend
             
-        results.append({{
-            "item_id": item['id'],
-            "compliance_score": score,
-            "passed": score < 60
-        }})
+        return {{
+            "next_period_forecast": int(level + trend),
+            "confidence_interval": [int(level * 0.9), int(level * 1.1)]
+        }}
+"""
+    else: # Control / General
+        return f"""# Algorithm: {algo_name}
+# Category: Process Control (PID Controller)
+# Generated: {ts}
+
+import time
+
+class TemperatureController:
+    def __init__(self, kp, ki, kd, setpoint):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.setpoint = setpoint
+        self.prev_error = 0
+        self.integral = 0
+
+    def update(self, current_value):
+        error = self.setpoint - current_value
+        self.integral += error
+        derivative = error - self.prev_error
         
-    return {{
-        "summary": "Processed " + str(len(results)) + " items",
-        "details": results,
-        "status": "OK"
-    }}
+        output = (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
+        
+        self.prev_error = error
+        return {{
+            "control_signal": max(0, min(100, output)), # Clamp 0-100%
+            "error_margin": round(error, 4),
+            "timestamp": time.time()
+        }}
 """
 
 # --- 5. 核心逻辑 ---
@@ -355,7 +334,7 @@ def generate_inventory(cursor):
     cursor.executemany("INSERT INTO inventory VALUES (?,?,?,?,?,?)", inv_data)
 
 def generate_transactions(cursor, conn):
-    print(f"💸 正在生成 {NUM_ORDERS} 条订单流 (使用 CSV 加载的 {len(ENTERPRISE_POOL)} 家企业)...")
+    print(f"💸 正在生成 {NUM_ORDERS} 条订单流 (使用 Excel 加载的 {len(ENTERPRISE_POOL)} 家企业)...")
     
     buffer = {
         'orders': [], 'settlements': [], 'logistics': [],
@@ -365,8 +344,7 @@ def generate_transactions(cursor, conn):
     for _ in range(NUM_ORDERS):
         order_id = str(uuid.uuid4())
         category = random.choice(CATEGORIES)
-        # 从加载的池中随机取企业
-        enterprise = random.choice(ENTERPRISE_POOL) 
+        enterprise = random.choice(ENTERPRISE_POOL)
         base_time = fake.date_time_between(start_date='-1y', end_date='now')
         status = random.choices(ORDER_STATUSES, weights=[10, 20, 15, 20, 30, 5], k=1)[0]
         
@@ -435,7 +413,10 @@ def generate_transactions(cursor, conn):
         _flush(cursor, buffer)
 
 def _flush(cursor, data):
-    cursor.executemany("INSERT INTO orders VALUES (?,?,?,?,?,?,?,?,?)", data['orders'])
+    cursor.executemany(
+        "INSERT INTO orders (id, order_number, enterprise, category, status, amount, currency, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        data['orders']
+    )
     cursor.executemany("INSERT INTO settlements VALUES (?,?,?,?,?)", data['settlements'])
     cursor.executemany("INSERT INTO logistics VALUES (?,?,?,?,?,?,?,?,?)", data['logistics'])
     cursor.executemany("INSERT INTO customs_headers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", data['customs_headers'])
@@ -455,8 +436,7 @@ def main():
     cursor = conn.cursor()
 
     try:
-        # 1. 加载 CSV 企业名单
-        # (ENTERPRISE_POOL 已在全局加载，此处通过 random.choice 使用)
+        # 1. 尝试加载 Excel 企业名单 (已在全局变量初始化)
         
         # 2. 清理
         clean_database(cursor)
@@ -472,7 +452,7 @@ def main():
         
         print(f"\n✅ 数据初始化完成！")
         print(f"   - 订单生成数: {NUM_ORDERS}")
-        print(f"   - 企业来源: {ENTERPRISE_CSV_FILE}")
+        print(f"   - 企业来源: {ENTERPRISE_FILE}")
         
     except Exception as e:
         print(f"\n❌ 发生异常: {e}")
