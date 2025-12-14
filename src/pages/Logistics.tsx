@@ -131,6 +131,7 @@ export const Logistics: React.FC = () => {
                     <th className="px-4 py-3">关联订单</th>
                     <th className="px-4 py-3">路线</th>
                     <th className="px-4 py-3">状态</th>
+                    <th className="px-4 py-3">仓库状态</th>
                     <th className="px-4 py-3">预计/实际时效</th>
                     <th className="px-4 py-3">效率评分</th>
                     <th className="px-4 py-3">操作</th>
@@ -158,6 +159,7 @@ export const Logistics: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3"><StatusBadge status={row.status} /></td>
+                      <td className="px-4 py-3"><StatusBadge status={row.warehouseStatus || 'pending'} /></td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col text-xs">
                           <span>预计: {row.estimatedTime}h</span>

@@ -18,7 +18,7 @@ export const Capabilities: React.FC = () => {
   
   const [caseTraces, setCaseTraces] = useState<any[]>([]);
   const [traceQuery, setTraceQuery] = useState('');
-  const [traceOutcome, setTraceOutcome] = useState<'all'|'Cleared'|'Risk Review'>('all');
+  const [traceOutcome, setTraceOutcome] = useState<'all'|'cleared'|'risk_review'|'blocked'>('all');
   const [traceModel, setTraceModel] = useState<string>('all');
   const [traceHs, setTraceHs] = useState<string>('all');
   const [tracePage, setTracePage] = useState(1);
@@ -135,25 +135,39 @@ export const Capabilities: React.FC = () => {
 
   const toZhOutcome = (s: string) => {
     const v = (s || '').toLowerCase()
-    if (v.includes('auto-pass') || v.includes('cleared') || v.includes('release')) return '放行'
-    if (v.includes('manual-review') || v.includes('risk') || v.includes('review') || v.includes('flag')) return '风险复核'
-    if (v.includes('blocked') || v.includes('reject') || v.includes('failed')) return '阻断'
-    if (v.includes('error')) return '错误'
+    if (['auto-pass', 'cleared', 'released', 'release', 'pass', 'success'].includes(v)) return '放行'
+    if (['manual-review', 'risk', 'review', 'flag', 'risk-flagged', 'flagged', 'warning', 'risk_review'].includes(v)) return '风险复核'
+    if (['blocked', 'reject', 'rejected', 'failed', 'block'].includes(v)) return '阻断'
+    if (['error', 'exception'].includes(v)) return '错误'
     return s || ''
   }
   const toZhStatus = (s: string) => {
     const v = (s || '').toLowerCase()
-    if (v === 'pending') return '等待中'
-    if (v === 'in_progress' || v === 'processing') return '进行中'
-    if (v === 'completed') return '已完成'
-    if (v === 'rejected' || v === 'failed') return '已拒绝'
-    if (v === 'declared') return '已申报'
-    if (v === 'cleared') return '已通关'
-    if (v === 'held' || v === 'inspecting') return '查验中'
-    if (v === 'customs') return '报关中'
-    if (v === 'pickup') return '揽收'
-    if (v === 'transit') return '运输中'
-    if (v === 'delivery') return '已完成'
+    // Common statuses
+    if (['pending', 'created', 'draft'].includes(v)) return '等待中'
+    if (['in_progress', 'processing', 'running', 'active'].includes(v)) return '进行中'
+    if (['completed', 'success', 'succeeded', 'finish', 'done'].includes(v)) return '已完成'
+    if (['rejected', 'failed', 'error', 'exception'].includes(v)) return '已拒绝'
+    
+    // Customs statuses
+    if (['declared', 'declaring'].includes(v)) return '已申报'
+    if (['cleared', 'released', 'pass'].includes(v)) return '已通关'
+    if (['held', 'inspecting', 'inspection', 'checking'].includes(v)) return '查验中'
+    if (['customs', 'customs_clearing'].includes(v)) return '报关中'
+    
+    // Logistics statuses
+    if (['pickup', 'picked_up'].includes(v)) return '揽收'
+    if (['transit', 'in_transit', 'shipping', 'transporting', 'on_way'].includes(v)) return '运输中'
+    if (['delivery', 'delivered', 'arrived'].includes(v)) return '已送达'
+    
+    // Warehouse statuses
+    if (['inbound', 'warehousing', 'stored', 'in_stock'].includes(v)) return '已入库'
+    if (['outbound', 'picked', 'packing', 'out_stock'].includes(v)) return '出库中'
+    
+    // Settlement statuses
+    if (['paid', 'settled'].includes(v)) return '已结算'
+    if (['unpaid', 'payment_pending'].includes(v)) return '待支付'
+    
     return s || ''
   }
 
@@ -619,8 +633,9 @@ export const Capabilities: React.FC = () => {
               <input value={traceQuery} onChange={(e)=>{ setTracePage(1); setTraceQuery(e.target.value) }} placeholder="检索: 输入/模型/输出" className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white" />
               <select value={traceOutcome} onChange={(e)=>{ setTracePage(1); setTraceOutcome(e.target.value as any) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white">
                 <option value="all">结果(全部)</option>
-                <option value="Cleared">放行</option>
-                <option value="Risk Review">风险复核</option>
+                <option value="cleared">放行</option>
+                <option value="risk_review">风险复核</option>
+                <option value="blocked">阻断</option>
               </select>
               <select value={traceModel} onChange={(e)=>{ setTracePage(1); setTraceModel(e.target.value) }} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white">
                 <option value="all">模型(全部)</option>
@@ -668,9 +683,12 @@ export const Capabilities: React.FC = () => {
                       <td className="px-4 py-3 text-gray-300">{log.output || log.output_result}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                          ((log.businessOutcome || log.business_outcome || '')+'').toLowerCase().includes('risk')
-                          ? 'bg-orange-900/30 text-orange-400'
-                          : 'bg-emerald-900/30 text-emerald-400'
+                          (() => {
+                            const v = ((log.businessOutcome || log.business_outcome || '')+'').toLowerCase()
+                            if (v.includes('risk') || v.includes('review') || v.includes('manual') || v.includes('flag')) return 'bg-orange-900/30 text-orange-400'
+                            if (v.includes('block') || v.includes('reject') || v.includes('fail') || v.includes('error')) return 'bg-red-900/30 text-red-400'
+                            return 'bg-emerald-900/30 text-emerald-400'
+                          })()
                         }`}>
                           {toZhOutcome(log.businessOutcome || log.business_outcome)}
                         </span>

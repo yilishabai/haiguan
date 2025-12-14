@@ -4,7 +4,7 @@ import { HudPanel, DataCard, MetricDisplay, StatusBadge } from '../components/ui
 import LogisticsMap from '../components/charts/LogisticsMap';
 import FunnelChart from '../components/charts/FunnelChart';
 import { useNavigate } from 'react-router-dom';
-import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getTodayGMV, getPortsCongestion, consistencyCheck, getKpiImprovements, getTradesPerMinute, getLogisticsData, getCurrentLogisticsRoutes } from '../lib/sqlite';
+import { getDashboardStats, getEnterpriseSeries, getCategoryDistribution, getProcessFunnel, getTodayGMV, getPortsCongestion, consistencyCheck, getKpiImprovements, getTradesPerMinute, getLogisticsData, getCurrentLogisticsRoutes, getGlobalHeaderStats } from '../lib/sqlite';
 import { 
   Package,
   Activity,
@@ -12,14 +12,28 @@ import {
   DollarSign,
   BarChart3,
   Zap,
-  CheckCircle
+  CheckCircle,
+  Users,
+  Clock,
+  Target
 } from 'lucide-react';
 
  
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [metrics, setMetrics] = useState({ gmv: 0, activeOrders: 0, customsRate: 0, logisticsException: 0, successRate: 0, dataSyncDelay: 0, systemLoad: 0 });
+  const [metrics, setMetrics] = useState({ 
+    gmv: 0, 
+    activeOrders: 0, 
+    customsRate: 0, 
+    logisticsException: 0, 
+    successRate: 0, 
+    dataSyncDelay: 0, 
+    systemLoad: 0,
+    onlineEnterprises: 0,
+    responseTime: 0,
+    avgAccuracy: 0
+  });
   const [enterpriseSeries, setEnterpriseSeries] = useState<{ time: string; online: number; active: number }[]>([]);
   const [categories, setCategories] = useState<{ name: string; value: number; color: string }[]>([]);
   const [funnel, setFunnel] = useState<{ stage: string; count: number }[]>([]);
@@ -33,7 +47,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     const load = async () => {
-      const [s, e, c, f, logisticsList, gmv, portsData, delay, kpi, tpm] = await Promise.all([
+      const [s, e, c, f, logisticsList, gmv, portsData, delay, kpi, tpm, globalStats] = await Promise.all([
         getDashboardStats(),
         getEnterpriseSeries(),
         getCategoryDistribution(),
@@ -43,16 +57,20 @@ export const Dashboard: React.FC = () => {
         getPortsCongestion(),
         consistencyCheck(),
         getKpiImprovements(),
-        getTradesPerMinute(5)
+        getTradesPerMinute(5),
+        getGlobalHeaderStats()
       ])
       const baseActive = s.activeOrders || Math.floor(800 + Math.random() * 4200);
       const overrides = {
-        gmv: s.gmv || Math.round((2_000_000 + Math.random() * 40_000_000) * 100) / 100,
-        activeOrders: baseActive,
-        logisticsException: s.logisticsException || Math.max(50, Math.round(baseActive * (0.02 + Math.random() * 0.03))),
-        successRate: (isFinite(s.successRate) && s.successRate > 0) ? s.successRate : Math.round(85 + Math.random() * 10),
+        gmv: globalStats.gmv_today || s.gmv || 0,
+        activeOrders: globalStats.active_orders || baseActive,
+        logisticsException: globalStats.logistics_exceptions || s.logisticsException || 0,
+        successRate: globalStats.success_rate || ((isFinite(s.successRate) && s.successRate > 0) ? s.successRate : Math.round(85 + Math.random() * 10)),
         dataSyncDelay: s.dataSyncDelay || Number((0.8 + Math.random() * 0.4).toFixed(1)),
-        systemLoad: s.systemLoad || Number((45 + Math.random() * 20).toFixed(1))
+        systemLoad: s.systemLoad || Number((45 + Math.random() * 20).toFixed(1)),
+        onlineEnterprises: globalStats.online_enterprises || 0,
+        responseTime: globalStats.response_time || 0,
+        avgAccuracy: globalStats.avg_accuracy || 0
       };
       setMetrics({ ...s, ...overrides });
       setEnterpriseSeries(e);
@@ -72,7 +90,7 @@ export const Dashboard: React.FC = () => {
       const currentRoutes = await getCurrentLogisticsRoutes();
       const base = (currentRoutes && currentRoutes.length ? currentRoutes : (logisticsList||[])).slice(0,200);
       setFlows(base.map((l:any)=>({ from: geo(String(l.origin||'')), to: geo(String(l.destination||'')), tooltip: `${l.origin} → ${l.destination} ${l.trackingNo||''}` })));
-      setGmvToday(gmv || Math.round((1_000_000 + Math.random() * 20_000_000) * 100) / 100);
+      setGmvToday(globalStats.gmv_today || gmv || 0);
       setPorts(portsData.map((p:any)=>({ port:p.port, index:p.congestionIndex })));
       setSyncDelay(delay);
       setKpiImp(kpi);
@@ -145,18 +163,19 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 核心业务 KPI */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+      {/* 全局头部数据 (Global Header) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
         <DataCard
-          title="GMV (今日出口额)"
-          value={`¥ ${gmvToday.toFixed(2)}`}
+          title="在线企业"
+          value={metrics.onlineEnterprises}
+          unit="家"
           trend="up"
           status="active"
           onClick={() => navigate('/collaboration')}
         >
           <div className="mt-4 flex items-center justify-between">
-            <DollarSign className="text-cyber-cyan" size={24} />
-            <span className="text-xs text-gray-400">交易规模</span>
+            <Users className="text-cyber-cyan" size={24} />
+            <span className="text-xs text-gray-400">活跃企业数</span>
           </div>
         </DataCard>
 
@@ -170,21 +189,65 @@ export const Dashboard: React.FC = () => {
         >
           <div className="mt-4 flex items-center justify-between">
             <Package className="text-neon-blue" size={24} />
-            <span className="text-xs text-gray-400">在途/处理中</span>
+            <span className="text-xs text-gray-400">处理中订单</span>
           </div>
         </DataCard>
 
         <DataCard
-          title="协同TPS"
-          value={tps.toFixed(2)}
-          unit=""
+          title="响应时间"
+          value={metrics.responseTime}
+          unit="ms"
           trend="stable"
           status="active"
-          onClick={() => navigate('/acceptance')}
+          onClick={() => navigate('/capabilities')}
+        >
+          <div className="mt-4 flex items-center justify-between">
+            <Clock className="text-emerald-green" size={24} />
+            <span className="text-xs text-gray-400">平均延迟</span>
+          </div>
+        </DataCard>
+
+        <DataCard
+          title="成功率"
+          value={metrics.successRate}
+          unit="%"
+          trend={metrics.successRate > 98 ? 'up' : 'stable'}
+          status={metrics.successRate > 95 ? 'active' : 'warning'}
+          onClick={() => navigate('/capabilities')}
+        >
+          <div className="mt-4 flex items-center justify-between">
+            <Target className="text-neon-purple" size={24} />
+            <span className="text-xs text-gray-400">业务放行率</span>
+          </div>
+        </DataCard>
+      </div>
+
+      {/* 业务运营控制塔 (Core Business KPIs) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-6">
+        <DataCard
+          title="GMV (今日出口额)"
+          value={`¥ ${metrics.gmv.toFixed(2)}`}
+          trend="up"
+          status="active"
+          onClick={() => navigate('/collaboration')}
+        >
+          <div className="mt-4 flex items-center justify-between">
+            <DollarSign className="text-gold" size={24} />
+            <span className="text-xs text-gray-400">交易规模</span>
+          </div>
+        </DataCard>
+
+        <DataCard
+          title="协同准确率"
+          value={metrics.avgAccuracy.toFixed(1)}
+          unit="%"
+          trend={metrics.avgAccuracy > 90 ? 'up' : 'stable'}
+          status={metrics.avgAccuracy > 85 ? 'active' : 'warning'}
+          onClick={() => navigate('/capabilities')}
         >
           <div className="mt-4 flex items-center justify-between">
             <CheckCircle className="text-emerald-green" size={24} />
-            <span className="text-xs text-gray-400">实时吞吐量</span>
+            <span className="text-xs text-gray-400">算法平均准确度</span>
           </div>
         </DataCard>
 
@@ -198,32 +261,6 @@ export const Dashboard: React.FC = () => {
           <div className="mt-4 flex items-center justify-between">
             <Truck className="text-alert-red" size={24} />
             <span className="text-xs text-gray-400">延误/阻塞</span>
-          </div>
-        </DataCard>
-
-        <DataCard
-          title="协同准确率提升"
-          value={`${(kpiImp?.accImp||0).toFixed(1)}%`}
-          trend={(kpiImp?.accImp||0) >= 10 ? 'up' : 'stable'}
-          status={(kpiImp?.accImp||0) >= 10 ? 'active' : 'processing'}
-          onClick={() => navigate('/capabilities')}
-        >
-          <div className="mt-4 flex items-center justify-between">
-            <CheckCircle className="text-emerald-green" size={24} />
-            <span className="text-xs text-gray-400">当前 {kpiImp?.acc?.toFixed(1)}%，基线 {(kpiImp?.base?.accuracy||0).toFixed?.(1) ? (kpiImp?.base?.accuracy||0).toFixed(1) : kpiImp?.base?.accuracy}</span>
-          </div>
-        </DataCard>
-
-        <DataCard
-          title="效率提升"
-          value={`${(kpiImp?.efImp||0).toFixed(1)}%`}
-          trend={(kpiImp?.efImp||0) >= 5 ? 'up' : 'stable'}
-          status={(kpiImp?.efImp||0) >= 5 ? 'active' : 'processing'}
-          onClick={() => navigate('/collaboration')}
-        >
-          <div className="mt-4 flex items-center justify-between">
-            <Activity className="text-neon-blue" size={24} />
-            <span className="text-xs text-gray-400">当前 {kpiImp?.ef?.toFixed(1)}%，基线 {(kpiImp?.base?.efficiency||0).toFixed?.(1) ? (kpiImp?.base?.efficiency||0).toFixed(1) : kpiImp?.base?.efficiency}</span>
           </div>
         </DataCard>
       </div>
@@ -287,16 +324,20 @@ export const Dashboard: React.FC = () => {
             </ResponsiveContainer>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
-            {categories.map((item, index) => (
-              <div key={index} className="flex items-center space-x-2">
-                <div 
-                  className="w-3 h-3 rounded" 
-                  style={{ backgroundColor: item.color }}
-                ></div>
-                <span className="text-gray-300">{item.name}</span>
-                <span className="digital-display">{item.value}%</span>
-              </div>
-            ))}
+            {categories.map((item, index) => {
+              const total = categories.reduce((acc, curr) => acc + curr.value, 0);
+              const percent = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0';
+              return (
+                <div key={index} className="flex items-center space-x-2">
+                  <div 
+                    className="w-3 h-3 rounded" 
+                    style={{ backgroundColor: item.color }}
+                  ></div>
+                  <span className="text-gray-300">{item.name}</span>
+                  <span className="digital-display">{percent}%</span>
+                </div>
+              );
+            })}
           </div>
         </HudPanel>
       </div>

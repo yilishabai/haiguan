@@ -38,6 +38,18 @@ def list_logistics(q: str = '', status: str = 'all', offset: int = 0, limit: int
         'actualTime': r.actual_time,
         'efficiency': r.efficiency,
         'orderId': r.order_id,
+        'mode': r.mode,
+        'etd': r.etd,
+        'eta': r.eta,
+        'atd': r.atd,
+        'ata': r.ata,
+        'blNo': r.bl_no,
+        'awbNo': r.awb_no,
+        'isFcl': r.is_fcl,
+        'freightCost': r.freight_cost,
+        'insuranceCost': r.insurance_cost,
+        'carrier': r.carrier,
+        'warehouseStatus': r.warehouse_status,
         'orderNumber': (order_map.get(r.order_id).order_number if r.order_id in order_map else None),
         'enterprise': (order_map.get(r.order_id).enterprise if r.order_id in order_map else None)
     } for r in rows]
@@ -63,6 +75,17 @@ def upsert_logistics(data: LogisticsIn, db: Session = Depends(get_db)):
         r.actual_time = data.actual_time or 0
         r.efficiency = data.efficiency or 0
         r.order_id = data.order_id or ''
+        r.mode = data.mode
+        r.etd = data.etd
+        r.eta = data.eta
+        r.atd = data.atd
+        r.ata = data.ata
+        r.bl_no = data.bl_no
+        r.awb_no = data.awb_no
+        r.is_fcl = data.is_fcl
+        r.freight_cost = data.freight_cost
+        r.insurance_cost = data.insurance_cost
+        r.carrier = data.carrier
     else:
         r = Logistics(
             id=data.id,
@@ -73,7 +96,18 @@ def upsert_logistics(data: LogisticsIn, db: Session = Depends(get_db)):
             estimated_time=data.estimated_time,
             actual_time=data.actual_time or 0,
             efficiency=data.efficiency or 0,
-            order_id=data.order_id or ''
+            order_id=data.order_id or '',
+            mode=data.mode,
+            etd=data.etd,
+            eta=data.eta,
+            atd=data.atd,
+            ata=data.ata,
+            bl_no=data.bl_no,
+            awb_no=data.awb_no,
+            is_fcl=data.is_fcl,
+            freight_cost=data.freight_cost,
+            insurance_cost=data.insurance_cost,
+            carrier=data.carrier
         )
         db.add(r)
     db.commit()

@@ -147,7 +147,8 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
       created:'已创建', pending:'待处理', processing:'处理中', completed:'已完成', failed:'失败', cancelled:'已取消',
       declared:'已申报', inspecting:'查验中', cleared:'已放行', held:'异常拦截', blocked:'拦截', released:'已放行',
       pickup:'已揽收', transit:'运输中', customs:'清关中', delivery:'派送中', signed:'已签收', success:'成功',
-      active:'正常', warning:'警告', error:'错误'
+      active:'正常', warning:'警告', error:'错误',
+      warehousing:'入库中', in_stock:'在库', out_stock:'已出库'
     }
     return labels[s] || s
   }

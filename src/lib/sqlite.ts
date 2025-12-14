@@ -94,7 +94,19 @@ function seed(db: Database) {
       estimated_time REAL,
       actual_time REAL,
       efficiency REAL,
-      order_id TEXT
+      order_id TEXT,
+      mode TEXT,
+      etd TEXT,
+      eta TEXT,
+      atd TEXT,
+      ata TEXT,
+      bl_no TEXT,
+      awb_no TEXT,
+      is_fcl INTEGER,
+      freight_cost REAL,
+      insurance_cost REAL,
+      carrier TEXT,
+      warehouse_status TEXT
     );
 
     CREATE TABLE IF NOT EXISTS payments (
@@ -703,6 +715,10 @@ function migrate(db: Database) {
     if (!cols.includes('is_fcl')) { db.run(`ALTER TABLE logistics ADD COLUMN is_fcl INTEGER`) }
     if (!cols.includes('freight_cost')) { db.run(`ALTER TABLE logistics ADD COLUMN freight_cost REAL`) }
     if (!cols.includes('insurance_cost')) { db.run(`ALTER TABLE logistics ADD COLUMN insurance_cost REAL`) }
+    if (!cols.includes('mode')) { db.run(`ALTER TABLE logistics ADD COLUMN mode TEXT`) }
+    if (!cols.includes('etd')) { db.run(`ALTER TABLE logistics ADD COLUMN etd TEXT`) }
+    if (!cols.includes('carrier')) { db.run(`ALTER TABLE logistics ADD COLUMN carrier TEXT`) }
+    if (!cols.includes('warehouse_status')) { db.run(`ALTER TABLE logistics ADD COLUMN warehouse_status TEXT`) }
   } catch { /* ignore */ }
 
   try {
@@ -1081,6 +1097,21 @@ function migrate(db: Database) {
   try { persist(db) } catch { /* ignore */ }
 }
 
+export async function getGlobalHeaderStats() {
+  try {
+    const res = await fetch('/api/model-metrics/dashboard-stats')
+    return await res.json()
+  } catch (e) {
+    console.error('Failed to fetch global header stats', e)
+    return {
+      online_enterprises: 0,
+      active_orders: 0,
+      response_time: 0,
+      success_rate: 0
+    }
+  }
+}
+
 export async function getDatabase() {
   if (!dbPromise) dbPromise = initDb()
   return dbPromise
@@ -1361,54 +1392,50 @@ export async function getDashboardStats() {
 }
 
 export async function getCategoryDistribution() {
-  const rows = await queryAll(`SELECT category as name, COUNT(*)*100.0/(SELECT COUNT(*) FROM orders) as value FROM orders GROUP BY category`)
-  const palette: Record<string,string> = {
-    beauty: '#00F0FF',
-    wine: '#2E5CFF',
-    appliance: '#10B981',
-    electronics: '#F59E0B',
-    textile: '#F472B6',
-    general: '#A855F7'
+  try {
+    const res = await fetch('/api/model-metrics/category-distribution')
+    if (!res.ok) throw new Error('API failed')
+    const rows = await res.json()
+    const palette: Record<string,string> = {
+      beauty: '#00F0FF',
+      wine: '#2E5CFF',
+      appliance: '#10B981',
+      electronics: '#F59E0B',
+      textile: '#F472B6',
+      general: '#A855F7'
+    }
+    return rows.map((r: any) => ({ 
+      name: r.category, 
+      value: r.count, 
+      color: palette[r.category] || '#22D3EE' 
+    }))
+  } catch (e) {
+    console.error('Failed to fetch category distribution from API, falling back to local DB', e)
+    const rows = await queryAll(`SELECT category as name, COUNT(*) as value FROM orders GROUP BY category`)
+    const palette: Record<string,string> = {
+      beauty: '#00F0FF',
+      wine: '#2E5CFF',
+      appliance: '#10B981',
+      electronics: '#F59E0B',
+      textile: '#F472B6',
+      general: '#A855F7'
+    }
+    return rows.map(r=>({ name: r.name, value: r.value, color: palette[r.name] || '#22D3EE' }))
   }
-  return rows.map(r=>({ name: r.name, value: Number(r.value.toFixed(1)), color: palette[r.name] || '#22D3EE' }))
 }
 
 export async function getProcessFunnel() {
   try {
-    const [
-      ordersRes,
-      settlementsProc, settlementsComp,
-      customsRes,
-      logisticsTransit, logisticsComp
-    ] = await Promise.all([
-      fetch('/api/orders/count').then(r => r.json()),
-      fetch('/api/settlements/count?status=processing').then(r => r.json()),
-      fetch('/api/settlements/count?status=completed').then(r => r.json()),
-      fetch('/api/customs/headers/count').then(r => r.json()),
-      fetch('/api/logistics/count?status=transit').then(r => r.json()),
-      fetch('/api/logistics/count?status=completed').then(r => r.json())
-    ])
-
-    const ordersCount = ordersRes.count || 0
-    const settlementsCount = (settlementsProc.count || 0) + (settlementsComp.count || 0)
-    const customsCount = customsRes.count || 0
-    const logisticsCount = (logisticsTransit.count || 0) + (logisticsComp.count || 0)
-    const warehouseCount = logisticsComp.count || 0
-
-    return [
-      { stage: '订单', count: ordersCount },
-      { stage: '支付', count: settlementsCount },
-      { stage: '通关', count: customsCount },
-      { stage: '物流', count: logisticsCount },
-      { stage: '仓库', count: warehouseCount }
-    ]
+    const res = await fetch('/api/model-metrics/process-funnel')
+    if (!res.ok) throw new Error('API failed')
+    return await res.json()
   } catch (e) {
     console.error('Failed to fetch funnel data from API, falling back to local DB', e)
     const stages = [
       { stage:'订单', sql:`SELECT COUNT(*) as c FROM orders` },
-      { stage:'支付', sql:`SELECT COUNT(*) as c FROM settlements WHERE status IN ('processing','completed')` },
-      { stage:'通关', sql:`SELECT COUNT(*) as c FROM customs_headers` },
-      { stage:'物流', sql:`SELECT COUNT(*) as c FROM logistics WHERE status IN ('transit','completed')` },
+      { stage:'支付', sql:`SELECT COUNT(*) as c FROM settlements WHERE status = 'completed'` },
+      { stage:'通关', sql:`SELECT COUNT(*) as c FROM customs_headers WHERE status = 'cleared'` },
+      { stage:'物流', sql:`SELECT COUNT(*) as c FROM logistics WHERE status IN ('transit','pickup','customs')` },
       { stage:'仓库', sql:`SELECT COUNT(*) as c FROM logistics WHERE status='completed'` }
     ]
     const res = [] as { stage:string, count:number }[]
@@ -1492,15 +1519,25 @@ export async function completeSettlement(orderId: string, _method: string) {
 }
 
 export async function getLatestLogisticsByOrder(orderId: string) {
-  const res = await fetch(`/api/logistics?q=${encodeURIComponent(orderId)}&offset=0&limit=1`)
-  const rows = await res.json()
-  return rows[0] || null
+  try {
+    const res = await fetch(`/api/logistics?q=${encodeURIComponent(orderId)}&offset=0&limit=1`)
+    const rows = await res.json()
+    return rows[0] || null
+  } catch (e) {
+    const rows = await queryAll(`SELECT id, tracking_no as trackingNo, origin, destination, status, estimated_time as estimatedTime, actual_time as actualTime, efficiency, order_id as orderId, mode, etd, eta, atd, ata, bl_no as blNo, awb_no as awbNo, is_fcl as isFcl, freight_cost as freightCost, insurance_cost as insuranceCost, carrier FROM logistics WHERE order_id=$oid ORDER BY id DESC LIMIT 1`, { $oid: orderId })
+    return rows[0] || null
+  }
 }
 
 export async function getCustomsHeaderByOrder(orderId: string) {
-  const res = await fetch(`/api/customs/headers?orderId=${encodeURIComponent(orderId)}&offset=0&limit=1`)
-  const rows = await res.json()
-  return rows[0] || null
+  try {
+    const res = await fetch(`/api/customs/headers?orderId=${encodeURIComponent(orderId)}&offset=0&limit=1`)
+    const rows = await res.json()
+    return rows[0] || null
+  } catch (e) {
+    const rows = await queryAll(`SELECT id, declaration_no as declarationNo, enterprise, consignor, consignee, port_code as portCode, trade_mode as tradeMode, currency, total_value as totalValue, status, declare_date as declareDate, order_id as orderId FROM customs_headers WHERE order_id=$oid LIMIT 1`, { $oid: orderId })
+    return rows[0] || null
+  }
 }
 
 export async function getCustomsClearances() {
@@ -1512,7 +1549,26 @@ export async function updateCustomsStatus(id: string, status: string) {
 }
 
 export async function getLogisticsData() {
-  return queryAll(`SELECT id, tracking_no as trackingNo, origin, destination, status, estimated_time as estimatedTime, actual_time as actualTime, efficiency, order_id as orderId, mode, etd, eta, atd, ata, bl_no as blNo, awb_no as awbNo, is_fcl as isFcl, freight_cost as freightCost, insurance_cost as insuranceCost FROM logistics ORDER BY id`)
+  try {
+    const res = await fetch('/api/logistics?limit=1000')
+    const data = await res.json()
+    return Array.isArray(data) ? data.map((d: any) => ({
+      ...d,
+      mode: d.mode || '',
+      etd: d.etd || '',
+      eta: d.eta || '',
+      atd: d.atd || '',
+      ata: d.ata || '',
+      blNo: d.blNo || '',
+      awbNo: d.awbNo || '',
+      isFcl: d.isFcl || false,
+      freightCost: d.freightCost || 0,
+      insuranceCost: d.insuranceCost || 0,
+      warehouseStatus: d.warehouseStatus || ''
+    })) : []
+  } catch (e) {
+            return queryAll(`SELECT id, tracking_no as trackingNo, origin, destination, status, estimated_time as estimatedTime, actual_time as actualTime, efficiency, order_id as orderId, mode, etd, eta, atd, ata, bl_no as blNo, awb_no as awbNo, is_fcl as isFcl, freight_cost as freightCost, insurance_cost as insuranceCost, carrier, warehouse_status as warehouseStatus FROM logistics ORDER BY id`)
+          }
 }
 
 export async function getPaymentMethods() {
@@ -1662,6 +1718,11 @@ async function ensureCaseTracesSeed() {
     logistics_status TEXT,
     settlement_status TEXT
   )`)
+  
+  // Normalize legacy data
+  await exec(`UPDATE case_traces SET business_outcome='cleared' WHERE business_outcome='Cleared'`)
+  await exec(`UPDATE case_traces SET business_outcome='risk_review' WHERE business_outcome='Risk Review'`)
+
   const c = (await queryAll(`SELECT COUNT(*) as c FROM case_traces`))[0]?.c || 0
   if (c === 0) {
     const orders = await queryAll(`SELECT id, order_number as orderNo, enterprise, category FROM orders ORDER BY created_at DESC LIMIT 120`)
@@ -1682,8 +1743,8 @@ async function ensureCaseTracesSeed() {
       const model = models[Math.floor(Math.random()*models.length)]
       const conf = Math.round((85 + Math.random()*10) * 10) / 10
       const lat = Math.floor(100 + Math.random()*400)
-      const outcome = (Math.random() < 0.3) ? 'Risk Review' : 'Cleared'
-      const impact = outcome === 'Risk Review' ? Math.round((Math.random()*3000)) : Math.round((Math.random()*2000))
+      const outcome = (Math.random() < 0.3) ? 'risk_review' : 'cleared'
+      const impact = outcome === 'risk_review' ? Math.round((Math.random()*3000)) : Math.round((Math.random()*2000))
       const comp = Math.round((80 + Math.random()*15) * 10) / 10
       await exec(`INSERT INTO case_traces(id,ts,order_id,input_snapshot,model_name,output_result,business_outcome,business_impact_value,confidence,latency_ms,hs_code,hs_chapter,compliance_score,customs_status,logistics_status,settlement_status)
         VALUES($id,$ts,$oid,$in,$mn,$out,$bo,$bv,$cf,$lt,$hs,$chap,$cs,$cst,$lst,$sst)`,{
@@ -1785,12 +1846,51 @@ export async function searchCaseTraces(params: { q?: string; outcome?: string; m
   await ensureCaseTracesSeed()
   const where: string[] = []
   const p: any = { $offset: params.offset || 0, $limit: params.limit || 20 }
-  if (params.q) { where.push(`(input_snapshot LIKE $q OR model_name LIKE $q OR output_result LIKE $q)`); p.$q = `%${params.q}%` }
-  if (params.outcome && params.outcome !== 'all') { where.push(`business_outcome = $bo`); p.$bo = params.outcome }
-  if (params.model && params.model !== 'all') { where.push(`model_name = $mn`); p.$mn = params.model }
-  if (params.hsChapter && params.hsChapter !== 'all') { where.push(`hs_chapter = $chap`); p.$chap = params.hsChapter }
+  if (params.q) { where.push(`(t.input_snapshot LIKE $q OR t.model_name LIKE $q OR t.output_result LIKE $q)`); p.$q = `%${params.q}%` }
+  if (params.outcome && params.outcome !== 'all') { where.push(`t.business_outcome = $bo`); p.$bo = params.outcome }
+  if (params.model && params.model !== 'all') { where.push(`t.model_name = $mn`); p.$mn = params.model }
+  if (params.hsChapter && params.hsChapter !== 'all') { where.push(`t.hs_chapter = $chap`); p.$chap = params.hsChapter }
   const sqlWhere = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return queryAll(`SELECT id, ts, order_id as orderId, input_snapshot as input, model_name as modelName, output_result as output, business_outcome as businessOutcome, business_impact_value as businessImpactValue, confidence, latency_ms as latencyMs, hs_code as hsCode, hs_chapter as hsChapter, compliance_score as complianceScore, customs_status as customsStatus, logistics_status as logisticsStatus, settlement_status as settlementStatus FROM case_traces ${sqlWhere} ORDER BY ts DESC LIMIT $limit OFFSET $offset`, p)
+  
+  const rows = await queryAll(`
+    SELECT 
+      t.id, 
+      t.ts, 
+      t.order_id as orderId, 
+      t.input_snapshot as input, 
+      t.model_name as modelName, 
+      t.output_result as output, 
+      t.business_outcome as businessOutcome, 
+      t.business_impact_value as businessImpactValue, 
+      t.confidence, 
+      t.latency_ms as latencyMs, 
+      COALESCE((SELECT substr(replace(ci.hs_code,'.',''),1,2) FROM customs_items ci WHERE ci.header_id = ch.id LIMIT 1), t.hs_chapter) as hsChapter,
+      t.compliance_score as complianceScore, 
+      COALESCE(ch.status, t.customs_status) as customsStatus, 
+      COALESCE(l.status, t.logistics_status) as logisticsStatus, 
+      COALESCE(s.status, t.settlement_status) as settlementStatus 
+    FROM case_traces t
+    LEFT JOIN customs_headers ch ON ch.order_id = t.order_id
+    LEFT JOIN logistics l ON l.order_id = t.order_id
+    LEFT JOIN settlements s ON s.order_id = t.order_id
+    ${sqlWhere} 
+    ORDER BY t.ts DESC 
+    LIMIT $limit OFFSET $offset
+  `, p)
+
+  // Post-process to parse confidence from output if missing in column
+  return rows.map(r => {
+    if (r.confidence === null || r.confidence === undefined) {
+      try {
+        const json = JSON.parse(r.output || '{}')
+        if (typeof json.confidence === 'number') {
+          // Normalize to 0-100 scale if it's 0-1
+          r.confidence = json.confidence <= 1 ? Math.round(json.confidence * 100) : Math.round(json.confidence)
+        }
+      } catch {}
+    }
+    return r
+  })
 }
 
 export async function countCaseTraces(params: { q?: string; outcome?: string; model?: string; hsChapter?: string }) {
@@ -2195,7 +2295,52 @@ export async function getTradeStreamBatch(offset: number, limit: number) {
 }
 
 export async function getPortsCongestion() {
-  return queryAll(`SELECT port, idx as congestionIndex, updated_at as updatedAt FROM ports_congestion`)
+  try {
+    const res = await fetch('/api/model-metrics/ports-congestion')
+    if (!res.ok) throw new Error('API failed')
+    return await res.json()
+  } catch (e) {
+    console.error('Failed to fetch ports congestion from API, falling back to local DB', e)
+    // Fallback: Calculate from local DB
+    const rows = await queryAll(`
+      SELECT ch.port_code, AVG(l.efficiency) as avg_eff 
+      FROM customs_headers ch 
+      JOIN logistics l ON ch.order_id = l.order_id 
+      GROUP BY ch.port_code
+    `)
+    
+    const portMapping: Record<string, string> = {
+      'CNSHA': '上海',
+      'CNYTN': '深圳',
+      'CNCAN': '广州',
+      'CNNGB': '宁波',
+      'CNTAO': '青岛',
+      'CNXMN': '厦门',
+      'CNTNJ': '天津',
+      'USLAX': '洛杉矶',
+      'NLRTM': '鹿特丹',
+      'JPOSA': '大阪'
+    }
+
+    const data: any[] = []
+    if (rows && rows.length > 0) {
+      for (const r of rows) {
+        if (portMapping[r.port_code]) {
+           // Congestion Index = (100 - efficiency) / 10
+           const eff = r.avg_eff || 100
+           const idx = Math.round((100 - eff) / 10 * 10) / 10
+           data.push({ port: portMapping[r.port_code], congestionIndex: idx })
+        }
+      }
+    }
+    
+    // If no data (e.g. initial state), return mock/seed data from ports_congestion table or default
+    if (data.length === 0) {
+       return queryAll(`SELECT port, idx as congestionIndex, updated_at as updatedAt FROM ports_congestion`)
+    }
+    
+    return data
+  }
 }
 
 export async function updatePortCongestion(port: string, index: number) {
@@ -2470,60 +2615,106 @@ export async function deleteOrder(id: string) {
 // --- Logistics CRUD ---
 
 export async function getLogisticsPaged(q: string, status: string, offset: number, limit: number) {
-  const qs = new URLSearchParams()
-  if (q) qs.set('q', q)
-  if (status) qs.set('status', status)
-  qs.set('offset', String(offset))
-  qs.set('limit', String(limit))
-  const res = await fetch(`/api/logistics?${qs.toString()}`)
-  const data = await res.json()
-  return data
-}
-
-export async function countLogistics(q: string, status: string) {
-  const qs = new URLSearchParams()
-  if (q) qs.set('q', q)
-  if (status) qs.set('status', status)
-  const res = await fetch(`/api/logistics/count?${qs.toString()}`)
-  const json = await res.json()
-  return json.count || 0
-}
-
-export async function upsertLogistics(l: any) {
-  await fetch('/api/logistics', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id: l.id,
-      tracking_no: l.trackingNo,
-      origin: l.origin,
-      destination: l.destination,
-      status: l.status,
-      estimated_time: l.estimatedTime || 0,
-      actual_time: l.actualTime || 0,
-      efficiency: l.efficiency || 0,
-      order_id: l.orderId || ''
-    })
-  })
-  await exec(`INSERT INTO logistics(id,tracking_no,origin,destination,status,estimated_time,actual_time,efficiency,order_id)
-              VALUES($id,$tr,$o,$d,$s,$et,$at,$ef,$oid)
-              ON CONFLICT(id) DO UPDATE SET
-                tracking_no=$tr, origin=$o, destination=$d, status=$s, estimated_time=$et, actual_time=$at, efficiency=$ef, order_id=$oid`,{
-    $id:l.id,$tr:l.trackingNo,$o:l.origin,$d:l.destination,$s:l.status,$et:l.estimatedTime||0,$at:l.actualTime||0,$ef:l.efficiency||0,$oid:l.orderId||''
-  })
-  if (l.mode || typeof l.isFcl !== 'undefined' || l.carrier || l.eta) {
-    await exec(`UPDATE logistics SET mode=$m, is_fcl=$f, carrier=$c, eta=$eta WHERE id=$id`,{
-      $m: l.mode || null,
-      $f: l.isFcl ? 1 : 0,
-      $c: l.carrier || null,
-      $eta: l.eta || null,
-      $id: l.id
-    })
+  try {
+    const qs = new URLSearchParams()
+    if (q) qs.set('q', q)
+    if (status) qs.set('status', status)
+    qs.set('offset', String(offset))
+    qs.set('limit', String(limit))
+    const res = await fetch(`/api/logistics?${qs.toString()}`)
+    const data = await res.json()
+            return data
+          } catch (e) {
+            let sql = `SELECT id, tracking_no as trackingNo, origin, destination, status, estimated_time as estimatedTime, actual_time as actualTime, efficiency, order_id as orderId, mode, etd, eta, atd, ata, bl_no as blNo, awb_no as awbNo, is_fcl as isFcl, freight_cost as freightCost, insurance_cost as insuranceCost, carrier FROM logistics`
+            const params: any = {}
+    const where: string[] = []
+    if (q) {
+      where.push(`(tracking_no LIKE $q OR origin LIKE $q OR destination LIKE $q OR order_id LIKE $q)`)
+      params.$q = `%${q}%`
+    }
+    if (status && status !== 'all') {
+      where.push(`status = $s`)
+      params.$s = status
+    }
+    if (where.length) sql += ` WHERE ${where.join(' AND ')}`
+    sql += ` ORDER BY id DESC LIMIT $limit OFFSET $offset`
+    params.$limit = limit
+    params.$offset = offset
+    return queryAll(sql, params)
   }
 }
 
+export async function countLogistics(q: string, status: string) {
+  try {
+    const qs = new URLSearchParams()
+    if (q) qs.set('q', q)
+    if (status) qs.set('status', status)
+    const res = await fetch(`/api/logistics/count?${qs.toString()}`)
+    const json = await res.json()
+    return json.count || 0
+  } catch (e) {
+    let sql = `SELECT COUNT(*) as c FROM logistics`
+    const params: any = {}
+    const where: string[] = []
+    if (q) {
+      where.push(`(tracking_no LIKE $q OR origin LIKE $q OR destination LIKE $q OR order_id LIKE $q)`)
+      params.$q = `%${q}%`
+    }
+    if (status && status !== 'all') {
+      where.push(`status = $s`)
+      params.$s = status
+    }
+    if (where.length) sql += ` WHERE ${where.join(' AND ')}`
+    const rows = await queryAll(sql, params)
+    return rows[0]?.c || 0
+  }
+}
+
+export async function upsertLogistics(l: any) {
+  try {
+    await fetch('/api/logistics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: l.id,
+        tracking_no: l.trackingNo,
+        origin: l.origin,
+        destination: l.destination,
+        status: l.status,
+        estimated_time: l.estimatedTime || 0,
+        actual_time: l.actualTime || 0,
+        efficiency: l.efficiency || 0,
+        order_id: l.orderId || '',
+        mode: l.mode,
+        etd: l.etd,
+        eta: l.eta,
+        atd: l.atd,
+        ata: l.ata,
+        bl_no: l.blNo,
+        awb_no: l.awbNo,
+        is_fcl: l.isFcl ? 1 : 0,
+        freight_cost: l.freightCost || 0,
+        insurance_cost: l.insuranceCost || 0,
+        carrier: l.carrier,
+        warehouse_status: l.warehouseStatus
+      })
+    })
+  } catch (e) { /* ignore backend error */ }
+
+  await exec(`INSERT INTO logistics(id,tracking_no,origin,destination,status,estimated_time,actual_time,efficiency,order_id,mode,etd,eta,atd,ata,bl_no,awb_no,is_fcl,freight_cost,insurance_cost,carrier,warehouse_status)
+              VALUES($id,$tr,$o,$d,$s,$et,$at,$ef,$oid,$m,$etd,$eta,$atd,$ata,$bl,$awb,$fcl,$fc,$ic,$c,$ws)
+              ON CONFLICT(id) DO UPDATE SET
+                tracking_no=$tr, origin=$o, destination=$d, status=$s, estimated_time=$et, actual_time=$at, efficiency=$ef, order_id=$oid,
+                mode=$m, etd=$etd, eta=$eta, atd=$atd, ata=$ata, bl_no=$bl, awb_no=$awb, is_fcl=$fcl, freight_cost=$fc, insurance_cost=$ic, carrier=$c, warehouse_status=$ws`,{
+    $id:l.id,$tr:l.trackingNo,$o:l.origin,$d:l.destination,$s:l.status,$et:l.estimatedTime||0,$at:l.actualTime||0,$ef:l.efficiency||0,$oid:l.orderId||'',
+    $m:l.mode||null,$etd:l.etd||null,$eta:l.eta||null,$atd:l.atd||null,$ata:l.ata||null,$bl:l.blNo||null,$awb:l.awbNo||null,$fcl:l.isFcl?1:0,$fc:l.freightCost||0,$ic:l.insuranceCost||0,$c:l.carrier||null,$ws:l.warehouseStatus||null
+  })
+}
+
 export async function deleteLogistics(id: string) {
-  await fetch(`/api/logistics/${id}`, { method: 'DELETE' })
+  try {
+    await fetch(`/api/logistics/${id}`, { method: 'DELETE' })
+  } catch (e) { /* ignore */ }
   await exec(`DELETE FROM logistics WHERE id=$id`, { $id: id })
 }
 

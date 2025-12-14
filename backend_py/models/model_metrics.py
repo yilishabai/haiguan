@@ -13,6 +13,7 @@ class ModelMetric(Base):
 class ModelExecutionLog(Base):
     __tablename__ = 'model_execution_logs'
     id = Column(String, primary_key=True) # trace_id
+    order_id = Column(String, index=True) # Unified association key
     model_id = Column(String)
     model_name = Column(String)
     input_snapshot = Column(Text)
